@@ -21,21 +21,17 @@ pipeline {
 
         stage('Compile & Package') {
             steps {
-                dir(env.SERVICE_DIR) {
-                    sh './gradlew clean bootJar --no-daemon'
-                }
+                sh "./gradlew :${SERVICE}:clean :${SERVICE}:bootJar --no-daemon"
             }
         }
 
         stage('Extract Version') {
             steps {
-                dir(env.SERVICE_DIR) {
-                    script {
-                        env.APP_VERSION = sh(
-                            script: "grep '^version' ../../build.gradle.kts | head -1 | sed \"s/version = '//;s/'//\"",
-                            returnStdout: true
-                        ).trim()
-                    }
+                script {
+                    env.APP_VERSION = sh(
+                        script: "grep '^version' build.gradle.kts | head -1 | sed \"s/version = '//;s/'//\"",
+                        returnStdout: true
+                    ).trim()
                 }
             }
         }
@@ -77,15 +73,13 @@ pipeline {
 
         //  TESTS 
         stage('Unit Tests') {
-            when { branch 'develop'; expression { true } }
+            when { branch 'develop' }
             steps {
-                dir(env.SERVICE_DIR) {
-                    sh './gradlew test --no-daemon'
-                }
+                sh "./gradlew :${SERVICE}:test --no-daemon"
             }
             post {
                 always {
-                    junit "${env.SERVICE_DIR}/build/test-results/test/*.xml"
+                    junit "${SERVICE_DIR}/build/test-results/test/*.xml"
                 }
             }
         }
@@ -93,13 +87,11 @@ pipeline {
         stage('Integration Tests') {
             when { branch 'develop' }
             steps {
-                dir(env.SERVICE_DIR) {
-                    sh './gradlew integrationTest --no-daemon -Dspring.profiles.active=integration'
-                }
+                sh "./gradlew :${SERVICE}:integrationTest --no-daemon"
             }
             post {
                 always {
-                    junit "${env.SERVICE_DIR}/build/test-results/integrationTest/*.xml"
+                    junit "${SERVICE_DIR}/build/test-results/integrationTest/*.xml"
                 }
             }
         }
