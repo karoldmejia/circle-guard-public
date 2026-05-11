@@ -1,10 +1,5 @@
 pipeline {
-    agent {
-        docker {
-            image 'docker:24.0.7-dind'
-            args '-v /var/run/docker.sock:/var/run/docker.sock'
-        }
-    }
+    agent any
 
     environment {
         SERVICE        = 'circleguard-identity-service'
@@ -12,22 +7,13 @@ pipeline {
         IMAGE_NAME     = "circleguard/identity-service"
         PORT           = '8083'
         DOCKER_REGISTRY = 'localhost:5000'
-        PATH            = "$PATH:/opt/gradle/bin"
+    }
+
+    triggers {
+        pollSCM('H/5 * * * *')
     }
 
     stages {
-        stage('Setup Tools') {
-            steps {
-                sh '''
-                    apk add --no-cache openjdk21 curl unzip bash
-                    curl -L "https://services.gradle.org/distributions/gradle-8.14-bin.zip" -o gradle.zip
-                    unzip gradle.zip -d /opt/
-                    curl -LO "https://dl.k8s.io/release/v1.28.0/bin/linux/amd64/kubectl"
-                    chmod +x kubectl
-                    mv kubectl /usr/local/bin/
-                '''
-            }
-        }
 
         stage('Checkout') {
             steps { checkout scm }
@@ -35,7 +21,7 @@ pipeline {
 
         stage('Compile & Package') {
             steps {
-                sh "/opt/gradle/bin/gradle :${SERVICE}:clean :${SERVICE}:bootJar --no-daemon"
+                sh "./gradlew :${SERVICE}:clean :${SERVICE}:bootJar --no-daemon"
             }
         }
 
@@ -85,7 +71,7 @@ pipeline {
             }
         }
 
-        //  TESTS 
+        // TESTS 
         stage('Unit Tests') {
             when { branch 'develop' }
             steps {
@@ -110,7 +96,7 @@ pipeline {
             }
         }
 
-        //  DEPLOY 
+        // DEPLOY 
         stage('Deploy to DEV') {
             when { branch 'develop' }
             steps {
@@ -144,7 +130,7 @@ pipeline {
             }
         }
 
-        //  RELEASE 
+        // RELEASE 
         stage('Release') {
             when { branch 'main' }
             steps {
