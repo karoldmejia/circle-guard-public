@@ -1,6 +1,10 @@
 pipeline {
-    agent any
-
+    agent {
+        docker {
+            image 'gradle:8.14-jdk21'
+            args '-v /var/run/docker.sock:/var/run/docker.sock -v /usr/local/bin/kubectl:/usr/local/bin/kubectl'
+        }
+    }
     environment {
         SERVICE        = 'circleguard-identity-service'
         SERVICE_DIR    = "services/${SERVICE}"
