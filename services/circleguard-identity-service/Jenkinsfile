@@ -21,7 +21,7 @@ pipeline {
 
         stage('Compile & Package') {
             steps {
-                sh "./gradlew :${SERVICE}:clean :${SERVICE}:bootJar --no-daemon"
+                sh "./gradlew :services:${SERVICE}:clean :services:${SERVICE}:bootJar --no-daemon"
             }
         }
 
