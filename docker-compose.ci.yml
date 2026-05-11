@@ -54,10 +54,11 @@ services:
       - zookeeper
     ports:
       - "9092:9092"
+      - "29092:29092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
@@ -123,7 +124,7 @@ services:
       kafka:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8083/actuator/health"]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -152,10 +153,11 @@ services:
       identity-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8180/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8180/actuator/health"]
       interval: 15s
       timeout: 10s
-      retries: 5
+      retries: 10
+      start_period: 60s
 
   promotion-service:
     image: circleguard/promotion-service:latest
@@ -184,7 +186,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8088/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8088/actuator/health"]
       interval: 20s
       timeout: 15s
       retries: 8
@@ -206,7 +208,7 @@ services:
       auth-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8087/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8087/actuator/health"]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -229,7 +231,7 @@ services:
       promotion-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8084/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8084/actuator/health"]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -252,7 +254,7 @@ services:
       auth-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/actuator/health"]
       interval: 15s
       timeout: 10s
       retries: 5

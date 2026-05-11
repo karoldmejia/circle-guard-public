@@ -7,18 +7,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.security.Key;
+import javax.crypto.SecretKey; 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 
 class QrTokenServiceTest {
 
-    private static final String SECRET = "my-qr-secret-key-for-dev-1234567890";
+    private static final String SECRET = "CBdF4NbOE8wywiEHp8lE4SY36coupzU2pGgkt4S1Us8g8B0WQzIR4xL12TKyf0Ep";
     private static final long EXPIRATION_MS = 60_000L; // 60 seconds
 
     private QrTokenService qrTokenService;
-    private Key key;
+    private SecretKey key;
 
     @BeforeEach
     void setUp() {
@@ -44,8 +44,7 @@ class QrTokenServiceTest {
 
         String token = qrTokenService.generateQrToken(anonymousId);
 
-        Claims claims = Jwts.parserBuilder().setSigningKey(key).build()
-            .parseClaimsJws(token).getBody();
+        Claims claims = parseToken(token);
         assertThat(claims.getSubject()).isEqualTo(anonymousId.toString());
     }
 
@@ -58,8 +57,7 @@ class QrTokenServiceTest {
         String token = qrTokenService.generateQrToken(anonymousId);
 
         long after = System.currentTimeMillis();
-        Claims claims = Jwts.parserBuilder().setSigningKey(key).build()
-            .parseClaimsJws(token).getBody();
+        Claims claims = parseToken(token);
         long expMs = claims.getExpiration().getTime();
         assertThat(expMs).isBetween(before + EXPIRATION_MS - 1000, after + EXPIRATION_MS + 1000);
     }
@@ -73,9 +71,8 @@ class QrTokenServiceTest {
         String token = shortLived.generateQrToken(anonymousId);
         Thread.sleep(50);
 
-        assertThatThrownBy(() ->
-            Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token)
-        ).isInstanceOf(io.jsonwebtoken.ExpiredJwtException.class);
+        assertThatThrownBy(() -> parseToken(token))
+            .isInstanceOf(io.jsonwebtoken.ExpiredJwtException.class);
     }
 
     @Test
@@ -100,13 +97,24 @@ class QrTokenServiceTest {
     @Test
     @DisplayName("generateQrToken: token from wrong secret is rejected")
     void generateQrToken_wrongSecret_rejectedByGateway() {
-        QrTokenService wrongSecretService = new QrTokenService("totally-wrong-qr-secret-key-xxx", EXPIRATION_MS);
+        QrTokenService wrongSecretService = new QrTokenService("Zi7UeEcRAkyhaAZ2TPy0vfw1FVMdNBcWiOkIvLtABca", EXPIRATION_MS);
         UUID anonymousId = UUID.randomUUID();
 
         String badToken = wrongSecretService.generateQrToken(anonymousId);
 
-        assertThatThrownBy(() ->
-            Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(badToken)
-        ).isInstanceOf(io.jsonwebtoken.security.SecurityException.class);
+        assertThatThrownBy(() -> {
+            Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(badToken);
+        }).isInstanceOf(io.jsonwebtoken.security.SecurityException.class);
+    }
+
+    private Claims parseToken(String token) {
+        return Jwts.parser()
+            .verifyWith(key)
+            .build()
+            .parseSignedClaims(token)
+            .getPayload();
     }
 }

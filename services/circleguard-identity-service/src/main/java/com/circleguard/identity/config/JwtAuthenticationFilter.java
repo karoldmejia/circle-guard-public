@@ -19,10 +19,12 @@ import java.security.Key;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import javax.crypto.SecretKey;
+
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    private final Key key;
+    private final SecretKey key;
 
     public JwtAuthenticationFilter(@Value("${jwt.secret}") String secret) {
         this.key = Keys.hmacShaKeyFor(secret.getBytes());
@@ -37,11 +39,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
             try {
-                Claims claims = Jwts.parserBuilder()
-                        .setSigningKey(key)
-                        .build()
-                        .parseClaimsJws(token)
-                        .getBody();
+                Claims claims = Jwts.parser()
+                    .verifyWith(key)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
 
                 String anonymousId = claims.getSubject();
                 List<String> permissions = claims.get("permissions", List.class);

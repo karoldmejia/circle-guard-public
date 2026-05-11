@@ -28,3 +28,9 @@ qr:
 
 server:
   port: 8180
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

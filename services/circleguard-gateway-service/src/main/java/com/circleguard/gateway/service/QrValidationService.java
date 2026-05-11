@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import java.security.Key;
 import java.util.UUID;
 
+import javax.crypto.SecretKey;
+
 @Service
 @RequiredArgsConstructor
 public class QrValidationService {
@@ -22,12 +24,12 @@ public class QrValidationService {
 
     public ValidationResult validateToken(String token) {
         try {
-            Key key = Keys.hmacShaKeyFor(qrSecret.getBytes());
-            Claims claims = Jwts.parserBuilder()
-                    .setSigningKey(key)
-                    .build()
-                    .parseClaimsJws(token)
-                    .getBody();
+            SecretKey key = Keys.hmacShaKeyFor(qrSecret.getBytes());
+            Claims claims = Jwts.parser()
+            .verifyWith(key)
+            .build()
+            .parseSignedClaims(token)
+            .getPayload();
 
             String anonymousId = claims.getSubject();
             

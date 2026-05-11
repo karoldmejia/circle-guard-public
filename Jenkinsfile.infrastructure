@@ -1,0 +1,225 @@
+pipeline {
+    agent any
+
+    parameters {
+        choice(name: 'ENVIRONMENT', choices: ['dev', 'stage', 'prod'], description: 'Target environment')
+        choice(name: 'ACTION', choices: ['deploy', 'destroy', 'status'], description: 'Action to perform')
+    }
+
+    environment {
+        DOCKER_REGISTRY = 'localhost:5000' 
+    }
+
+    stages {
+
+        // 1. VALIDATION
+        stage('Validate Environment') {
+            steps {
+                script {
+                    if (params.ENVIRONMENT == 'prod' && params.ACTION == 'deploy') {
+                        input message: ' ¿Desplegar INFRAESTRUCTURA a PRODUCCIÓN? Esta acción es crítica.', ok: 'Sí, desplegar'
+                    }
+                    if (params.ENVIRONMENT == 'prod' && params.ACTION == 'destroy') {
+                        error('No se permite destruir el entorno de producción')
+                    }
+                }
+                sh """
+                    echo " Target environment: ${params.ENVIRONMENT}"
+                    echo " Action: ${params.ACTION}"
+                    kubectl version --client
+                """
+            }
+        }
+
+        stage('Check Status') {
+            when { expression { params.ACTION == 'status' } }
+            steps {
+                sh """
+                    echo " Infrastructure status for ${params.ENVIRONMENT}:"
+                    kubectl get pods -n ${params.ENVIRONMENT} 2>/dev/null || echo "Namespace not found"
+                    kubectl get services -n ${params.ENVIRONMENT} 2>/dev/null || echo "No services found"
+                    kubectl get pvc -n ${params.ENVIRONMENT} 2>/dev/null || echo "No PVCs found"
+                """
+            }
+        }
+
+        stage('Destroy Infrastructure') {
+            when { 
+                expression { 
+                    params.ACTION == 'destroy' && params.ENVIRONMENT in ['dev', 'stage']
+                }
+            }
+            steps {
+                input message: " ¿Destruir infraestructura en ${params.ENVIRONMENT}? Se perderán todos los datos.", ok: 'Sí, destruir'
+                sh """
+                    echo " Destroying infrastructure in ${params.ENVIRONMENT}..."
+                    kubectl delete namespace ${params.ENVIRONMENT} --ignore-not-found
+                    echo " Infrastructure destroyed"
+                """
+            }
+        }
+
+        stage('Create Namespace') {
+            when { expression { params.ACTION == 'deploy' } }
+            steps {
+                sh """
+                    kubectl create namespace ${params.ENVIRONMENT} --dry-run=client -o yaml | kubectl apply -f -
+                """
+            }
+        }
+
+        stage('Apply Secrets') {
+            when { expression { params.ACTION == 'deploy' && params.ENVIRONMENT != 'prod' } }
+            steps {
+                sh """
+                    echo " Applying secrets for ${params.ENVIRONMENT}..."
+                    kubectl apply -f k8s/${params.ENVIRONMENT}/secrets.yaml
+                """
+            }
+        }
+
+        stage('Deploy Storage (PVCs)') {
+            when { expression { params.ACTION == 'deploy' } }
+            steps {
+                sh """
+                    echo " Creating PersistentVolumeClaims..."
+                    kubectl apply -f k8s/infrastructure/postgres.yaml
+                    kubectl apply -f k8s/infrastructure/neo4j.yaml
+                """
+            }
+        }
+
+        stage('Deploy Stateful Services') {
+            when { expression { params.ACTION == 'deploy' } }
+            parallel {
+                stage('PostgreSQL') {
+                    steps {
+                        sh """
+                            kubectl apply -f k8s/${params.ENVIRONMENT}/infrastructure/postgres.yaml
+                            kubectl rollout status deployment/postgres -n ${params.ENVIRONMENT} --timeout=180s
+                        """
+                    }
+                }
+                stage('Neo4j') {
+                    steps {
+                        sh """
+                            kubectl apply -f k8s/${params.ENVIRONMENT}/infrastructure/neo4j.yaml
+                            kubectl rollout status deployment/neo4j -n ${params.ENVIRONMENT} --timeout=180s
+                        """
+                    }
+                }
+                stage('Redis') {
+                    steps {
+                        sh """
+                            kubectl apply -f k8s/${params.ENVIRONMENT}/infrastructure/redis.yaml
+                            kubectl rollout status deployment/redis -n ${params.ENVIRONMENT} --timeout=60s
+                        """
+                    }
+                }
+                stage('OpenLDAP') {
+                    steps {
+                        sh """
+                            kubectl apply -f k8s/${params.ENVIRONMENT}/infrastructure/openldap.yaml
+                            kubectl rollout status deployment/openldap -n ${params.ENVIRONMENT} --timeout=120s
+                        """
+                    }
+                }
+                stage('MailHog') {
+                    when { expression { params.ENVIRONMENT != 'prod' } }
+                    steps {
+                        sh """
+                            kubectl apply -f k8s/${params.ENVIRONMENT}/infrastructure/mailhog.yaml
+                            kubectl rollout status deployment/mailhog -n ${params.ENVIRONMENT} --timeout=60s
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Deploy Zookeeper') {
+            when { expression { params.ACTION == 'deploy' } }
+            steps {
+                sh """
+                    kubectl apply -f k8s/${params.ENVIRONMENT}/infrastructure/zookeeper.yaml
+                    kubectl rollout status deployment/zookeeper -n ${params.ENVIRONMENT} --timeout=120s
+                """
+            }
+        }
+
+        stage('Deploy Kafka') {
+            when { expression { params.ACTION == 'deploy' } }
+            steps {
+                sh """
+                    kubectl apply -f k8s/${params.ENVIRONMENT}/infrastructure/kafka.yaml
+                    kubectl rollout status deployment/kafka -n ${params.ENVIRONMENT} --timeout=180s
+                """
+            }
+        }
+
+        stage('Validate Infrastructure') {
+            when { expression { params.ACTION == 'deploy' } }
+            steps {
+                sh """
+                    echo " Validating all infrastructure pods..."
+                    kubectl get pods -n ${params.ENVIRONMENT}
+                    
+                    # Esperar a que todos estén Running
+                    kubectl wait --for=condition=ready pod -l app=postgres -n ${params.ENVIRONMENT} --timeout=60s || true
+                    kubectl wait --for=condition=ready pod -l app=neo4j -n ${params.ENVIRONMENT} --timeout=60s || true
+                    kubectl wait --for=condition=ready pod -l app=kafka -n ${params.ENVIRONMENT} --timeout=60s || true
+                """
+            }
+        }
+
+        stage('Health Checks') {
+            when { expression { params.ACTION == 'deploy' && params.ENVIRONMENT != 'prod' } }
+            steps {
+                sh """
+                    echo " Running health checks..."
+                    kubectl exec -n ${params.ENVIRONMENT} deployment/postgres -- pg_isready -U admin
+                    kubectl exec -n ${params.ENVIRONMENT} deployment/redis -- redis-cli ping
+                """
+            }
+        }
+
+        stage('Create Kafka Topics') {
+            when { expression { params.ACTION == 'deploy' && params.ENVIRONMENT != 'prod' } }
+            steps {
+                sh """
+                    echo " Creating Kafka topics..."
+                    TOPICS="promotion.status.changed audit.identity.accessed form.survey.submitted"
+                    for TOPIC in \$TOPICS; do
+                        kubectl exec -n ${params.ENVIRONMENT} deployment/kafka -- \
+                            kafka-topics --create --if-not-exists \
+                            --topic \$TOPIC --bootstrap-server localhost:9092 \
+                            --partitions 3 --replication-factor 1 || echo "Topic \$TOPIC already exists"
+                    done
+                    echo " Existing topics:"
+                    kubectl exec -n ${params.ENVIRONMENT} deployment/kafka -- kafka-topics --list --bootstrap-server localhost:9092
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo """
+            ============================================
+            Infrastructure ${params.ACTION} completed!
+            
+            Environment: ${params.ENVIRONMENT}
+            Action: ${params.ACTION}
+            
+            Next steps:
+              kubectl get pods -n ${params.ENVIRONMENT}
+              kubectl get services -n ${params.ENVIRONMENT}
+            ============================================
+            """
+        }
+        failure {
+            echo " Infrastructure ${params.ACTION} failed for environment: ${params.ENVIRONMENT}"
+            sh "kubectl describe pods -n ${params.ENVIRONMENT} || true"
+        }
+        always { cleanWs() }
+    }
+}

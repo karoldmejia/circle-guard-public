@@ -32,7 +32,11 @@ public class SecurityConfig {
             }))
             .csrf(AbstractHttpConfigurer::disable)
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/v1/identities/visitor", "/api/v1/identities/map").permitAll()
+                .requestMatchers(
+                    "/api/v1/identities/visitor",
+                    "/api/v1/identities/map",
+                    "/actuator/**"
+                ).permitAll()
                 .anyRequest().authenticated()
             )
             .exceptionHandling(exceptions -> exceptions

@@ -80,8 +80,8 @@ pipeline {
                 sh '''
                     kubectl apply -f k8s/dev/services/promotion.yaml
                     kubectl rollout status deployment/promotion-service -n dev --timeout=180s
-                    kubectl exec -n dev deployment/promotion-service -- curl -sf http://localhost:8088/actuator/health | grep UP
-                '''
+                '''                    kubectl exec -n dev deployment/promotion-service -- wget -qO- http://localhost:8088/actuator/health | grep UP
+
             }
         }
 

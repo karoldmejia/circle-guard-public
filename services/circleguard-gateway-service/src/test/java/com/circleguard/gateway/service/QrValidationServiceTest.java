@@ -22,6 +22,8 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import javax.crypto.SecretKey;
+
 /**
  * Unit tests for QrValidationService (gateway).
  * Validates token parsing, health status checks, and access decisions.
@@ -142,7 +144,7 @@ class QrValidationServiceTest {
     }
 
     private String buildToken(UUID userId, long expirationMs) {
-        Key key = Keys.hmacShaKeyFor(QR_SECRET.getBytes());
+        SecretKey key = Keys.hmacShaKeyFor(QR_SECRET.getBytes());
         return Jwts.builder()
             .setSubject(userId.toString())
             .setIssuedAt(new Date())

@@ -16,3 +16,9 @@ qr:
 
 server:
   port: 8087
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

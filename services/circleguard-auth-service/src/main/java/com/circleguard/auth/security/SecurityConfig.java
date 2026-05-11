@@ -28,6 +28,7 @@ public class SecurityConfig {
             .headers(headers -> headers.frameOptions(frame -> frame.disable()))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/auth/login", "/api/v1/auth/qr/verify").permitAll()
+                .requestMatchers("/actuator/**").permitAll()
                 .requestMatchers("/api/v1/auth/qr/generate").authenticated()
                 .anyRequest().permitAll())
             .addFilterBefore(jwtFilter, org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
@@ -56,7 +57,7 @@ public class SecurityConfig {
     @Bean
     public LdapContextSource contextSource() {
         LdapContextSource contextSource = new LdapContextSource();
-        contextSource.setUrl("ldap://localhost:389");
+        contextSource.setUrl("ldap://openldap:389");
         contextSource.setBase("dc=circleguard,dc=edu");
         contextSource.setUserDn("cn=admin,dc=circleguard,dc=edu");
         contextSource.setPassword("admin");

@@ -1,0 +1,167 @@
+pipeline {
+    agent any
+
+    environment {
+        SERVICE        = 'circleguard-identity-service'
+        SERVICE_DIR    = "services/${SERVICE}"
+        IMAGE_NAME     = "circleguard/identity-service"
+        PORT           = '8083'
+        DOCKER_REGISTRY = 'localhost:5000'
+    }
+
+    triggers {
+        pollSCM('H/5 * * * *')
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps { checkout scm }
+        }
+
+        stage('Compile & Package') {
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh './gradlew clean bootJar --no-daemon'
+                }
+            }
+        }
+
+        stage('Extract Version') {
+            steps {
+                dir(env.SERVICE_DIR) {
+                    script {
+                        env.APP_VERSION = sh(
+                            script: "grep '^version' ../../build.gradle.kts | head -1 | sed \"s/version = '//;s/'//\"",
+                            returnStdout: true
+                        ).trim()
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh "docker build -t ${IMAGE_NAME}:${APP_VERSION} -f Dockerfile ."
+                }
+            }
+        }
+
+        stage('Security Scan (Trivy)') {
+            steps {
+                sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_NAME}:${APP_VERSION} || true"
+            }
+        }
+
+        stage('Scan for Hardcoded Secrets') {
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh '''
+                        if grep -r "vault.secret\\s*=\\s*['\\\"][^$]" src/main/; then
+                            echo "ERROR: Hardcoded vault secret detected!"
+                            exit 1
+                        fi
+                        echo "Secret scan passed."
+                    '''
+                }
+            }
+        }
+
+        stage('Publish Image') {
+            steps {
+                sh "docker tag ${IMAGE_NAME}:${APP_VERSION} ${DOCKER_REGISTRY}/${IMAGE_NAME}:${APP_VERSION}"
+                sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${APP_VERSION}"
+            }
+        }
+
+        //  TESTS 
+        stage('Unit Tests') {
+            when { branch 'develop'; expression { true } }
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh './gradlew test --no-daemon'
+                }
+            }
+            post {
+                always {
+                    junit "${env.SERVICE_DIR}/build/test-results/test/*.xml"
+                }
+            }
+        }
+
+        stage('Integration Tests') {
+            when { branch 'develop' }
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh './gradlew integrationTest --no-daemon -Dspring.profiles.active=integration'
+                }
+            }
+            post {
+                always {
+                    junit "${env.SERVICE_DIR}/build/test-results/integrationTest/*.xml"
+                }
+            }
+        }
+
+        //  DEPLOY 
+        stage('Deploy to DEV') {
+            when { branch 'develop' }
+            steps {
+                sh '''
+                    kubectl apply -f k8s/dev/services/identity.yaml
+                    kubectl rollout status deployment/identity-service -n dev --timeout=120s
+                    kubectl exec -n dev deployment/identity-service -- curl -sf http://localhost:8083/actuator/health | grep UP
+                '''
+            }
+        }
+
+        stage('Deploy to STAGE') {
+            when { branch 'release/*' }
+            steps {
+                input message: '¿Desplegar Identity a STAGE?', ok: 'Desplegar'
+                sh '''
+                    kubectl apply -f k8s/stage/services/identity.yaml
+                    kubectl rollout status deployment/identity-service -n stage --timeout=180s
+                '''
+            }
+        }
+
+        stage('Deploy to PROD') {
+            when { branch 'main' }
+            steps {
+                input message: '¿Desplegar Identity a PRODUCCIÓN?', ok: 'Sí'
+                sh '''
+                    kubectl apply -f k8s/prod/services/identity.yaml
+                    kubectl rollout status deployment/identity-service -n prod --timeout=300s
+                '''
+            }
+        }
+
+        //  RELEASE 
+        stage('Release') {
+            when { branch 'main' }
+            steps {
+                sh '''
+                    git tag -a "identity-v${APP_VERSION}" -m "Identity service release ${APP_VERSION}"
+                    git push origin "identity-v${APP_VERSION}"
+                    echo "Release ${APP_VERSION} completed!"
+                '''
+            }
+        }
+    }
+
+    post {
+        failure {
+            echo "Pipeline failed for ${env.SERVICE}"
+            script {
+                if (env.BRANCH_NAME == 'main') {
+                    sh 'kubectl rollout undo deployment/identity-service -n prod || true'
+                }
+            }
+        }
+        always {
+            cleanWs()
+        }
+    }
+}

@@ -10,7 +10,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
-import java.security.Key;
+import javax.crypto.SecretKey; 
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -30,7 +30,7 @@ class JwtTokenServiceTest {
     private static final long EXPIRATION_MS = 3_600_000L; // 1 hour
 
     private JwtTokenService jwtTokenService;
-    private Key key;
+    private SecretKey key;
 
     @BeforeEach
     void setUp() {
@@ -96,12 +96,12 @@ class JwtTokenServiceTest {
     @Test
     @DisplayName("generateToken: token with 1ms expiration should be expired immediately")
     void generateToken_withVeryShortExpiration_tokenIsExpired() throws InterruptedException {
-        JwtTokenService shortLivedService = new JwtTokenService(SECRET, 1L); // 1ms
+        JwtTokenService shortLivedService = new JwtTokenService(SECRET, 1L);
         UUID anonymousId = UUID.randomUUID();
         Authentication auth = mockAuthentication(List.of("ROLE_STUDENT"));
 
         String token = shortLivedService.generateToken(anonymousId, auth);
-        Thread.sleep(50); // wait for expiry
+        Thread.sleep(50);
 
         assertThatThrownBy(() -> parseClaims(token))
             .isInstanceOf(io.jsonwebtoken.ExpiredJwtException.class)
@@ -130,11 +130,12 @@ class JwtTokenServiceTest {
 
         String tamperedToken = tampered.generateToken(anonymousId, auth);
 
-        // Parsing with original key should fail
-        Key originalKey = Keys.hmacShaKeyFor(SECRET.getBytes());
+        // API correcta para JJWT 0.12.x
         assertThatThrownBy(() ->
-            Jwts.parserBuilder().setSigningKey(originalKey).build()
-                .parseClaimsJws(tamperedToken)
+            Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(tamperedToken)
         ).isInstanceOf(io.jsonwebtoken.security.SecurityException.class);
     }
 
@@ -149,10 +150,10 @@ class JwtTokenServiceTest {
     }
 
     private Claims parseClaims(String token) {
-        return Jwts.parserBuilder()
-            .setSigningKey(key)
+        return Jwts.parser()
+            .verifyWith(key)
             .build()
-            .parseClaimsJws(token)
-            .getBody();
+            .parseSignedClaims(token)
+            .getPayload();
     }
 }

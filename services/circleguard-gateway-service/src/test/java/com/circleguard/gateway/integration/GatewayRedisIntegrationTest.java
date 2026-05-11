@@ -29,6 +29,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import javax.crypto.SecretKey;
+
 /**
  * Integration tests for Gateway service.
  * Validates QR token validation with real Redis (Testcontainer) and mocked auth.
@@ -173,7 +175,7 @@ class GatewayRedisIntegrationTest {
 
     //  Helper 
     private String buildQrToken(UUID userId, long expirationMs) {
-        Key key = Keys.hmacShaKeyFor(QR_SECRET.getBytes());
+        SecretKey key = Keys.hmacShaKeyFor(QR_SECRET.getBytes());
         return Jwts.builder()
             .setSubject(userId.toString())
             .setIssuedAt(new Date())

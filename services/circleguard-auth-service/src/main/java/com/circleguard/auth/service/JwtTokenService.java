@@ -11,10 +11,12 @@ import java.security.Key;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import javax.crypto.SecretKey;
+
 @Service
 public class JwtTokenService {
 
-    private final Key key;
+    private final SecretKey key;
     private final long expiration;
 
     public JwtTokenService(@Value("${jwt.secret}") String secret, 

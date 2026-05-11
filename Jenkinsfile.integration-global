@@ -1,0 +1,123 @@
+pipeline {
+    agent any
+
+    environment {
+        NAMESPACE = "integration-test-${BUILD_NUMBER}"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps { checkout scm }
+        }
+
+        stage('Create Namespace') {
+            steps {
+                sh "kubectl create ns ${NAMESPACE} || true"
+            }
+        }
+
+        //  Phase 1: Infrastructure from manifests 
+        stage('Deploy Infrastructure') {
+            steps {
+                sh """
+                    # Apply infrastructure manifests
+                    kubectl apply -f k8s/dev/infrastructure/ -n ${NAMESPACE}
+                    echo "Waiting for infrastructure to be ready..."
+                    sleep 60
+                    kubectl get pods -n ${NAMESPACE}
+                """
+            }
+        }
+
+        //  Phase 2: Deploy Services 
+        stage('Deploy Identity') {
+            steps {
+                sh """
+                    kubectl apply -f k8s/dev/services/identity.yaml -n ${NAMESPACE}
+                    kubectl rollout status deployment/identity-service -n ${NAMESPACE} --timeout=180s
+                """
+            }
+        }
+
+        stage('Deploy Auth + Promotion') {
+            parallel {
+                stage('Auth') {
+                    steps {
+                        sh """
+                            kubectl apply -f k8s/dev/services/auth.yaml -n ${NAMESPACE}
+                            kubectl rollout status deployment/auth-service -n ${NAMESPACE} --timeout=180s
+                        """
+                    }
+                }
+                stage('Promotion') {
+                    steps {
+                        sh """
+                            kubectl apply -f k8s/dev/services/promotion.yaml -n ${NAMESPACE}
+                            kubectl rollout status deployment/promotion-service -n ${NAMESPACE} --timeout=300s
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Deploy Remaining Services') {
+            parallel {
+                stage('Gateway') {
+                    steps {
+                        sh """
+                            kubectl apply -f k8s/dev/services/gateway.yaml -n ${NAMESPACE}
+                            kubectl rollout status deployment/gateway-service -n ${NAMESPACE} --timeout=180s
+                        """
+                    }
+                }
+                stage('Dashboard') {
+                    steps {
+                        sh """
+                            kubectl apply -f k8s/dev/services/dashboard.yaml -n ${NAMESPACE}
+                            kubectl rollout status deployment/dashboard-service -n ${NAMESPACE} --timeout=180s
+                        """
+                    }
+                }
+                stage('Notification') {
+                    steps {
+                        sh """
+                            kubectl apply -f k8s/dev/services/notification.yaml -n ${NAMESPACE}
+                            kubectl rollout status deployment/notification-service -n ${NAMESPACE} --timeout=180s
+                        """
+                    }
+                }
+            }
+        }
+
+        //  Phase 3: Smoke Tests usando kubectl exec 
+        stage('Smoke Tests') {
+            steps {
+                sh """
+                    echo "=== Health Checks via kubectl exec ==="
+                    
+                    # Identity
+                    kubectl exec -n ${NAMESPACE} deployment/identity-service -- \
+                        curl -sf http://localhost:8083/actuator/health | grep UP && echo "identity: OK" || echo "identity: FAIL"
+                    
+                    # Auth
+                    kubectl exec -n ${NAMESPACE} deployment/auth-service -- \
+                        curl -sf http://localhost:8180/actuator/health | grep UP && echo "auth: OK" || echo "auth: FAIL"
+                    
+                    # Promotion
+                    kubectl exec -n ${NAMESPACE} deployment/promotion-service -- \
+                        curl -sf http://localhost:8088/actuator/health | grep UP && echo "promotion: OK" || echo "promotion: FAIL"
+                    
+                    echo "=== Smoke Tests Passed ==="
+                """
+            }
+        }
+    }
+
+    post {
+        always {
+            sh "kubectl delete ns ${NAMESPACE} || true"
+            cleanWs()
+        }
+    }
+}

@@ -1,0 +1,160 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_REGISTRY = 'localhost:5000'  // Cambiar por tu registry
+        NAMESPACE = 'prod'
+    }
+
+    stages {
+
+        stage('Validate Release Branch') {
+            steps {
+                script {
+                    def branch = env.GIT_BRANCH ?: sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    if (!branch.startsWith('main') && !env.TAG_NAME?.startsWith('v')) {
+                        error("Release pipeline must run on main or a v* tag. Got: ${branch}")
+                    }
+                    env.APP_VERSION = env.TAG_NAME ?: sh(
+                        script: "grep '^version' build.gradle.kts | head -1 | sed \"s/version = '//;s/'//\"",
+                        returnStdout: true
+                    ).trim()
+                    echo "Releasing version: ${env.APP_VERSION}"
+                }
+            }
+        }
+
+        stage('Manual Approval: Release to PRODUCTION') {
+            steps {
+                input message: "¿Aprobar release v${env.APP_VERSION} a PRODUCCIÓN?",
+                      ok: 'Aprobar release'
+            }
+        }
+
+        //  Build All Images 
+        stage('Build & Tag All Images') {
+            parallel {
+                stage('identity') {
+                    steps {
+                        sh """
+                            docker build -t ${DOCKER_REGISTRY}/circleguard/identity-service:${APP_VERSION} services/circleguard-identity-service/
+                            docker push ${DOCKER_REGISTRY}/circleguard/identity-service:${APP_VERSION}
+                        """
+                    }
+                }
+                stage('auth') {
+                    steps {
+                        sh """
+                            docker build -t ${DOCKER_REGISTRY}/circleguard/auth-service:${APP_VERSION} services/circleguard-auth-service/
+                            docker push ${DOCKER_REGISTRY}/circleguard/auth-service:${APP_VERSION}
+                        """
+                    }
+                }
+                stage('promotion') {
+                    steps {
+                        sh """
+                            docker build -t ${DOCKER_REGISTRY}/circleguard/promotion-service:${APP_VERSION} services/circleguard-promotion-service/
+                            docker push ${DOCKER_REGISTRY}/circleguard/promotion-service:${APP_VERSION}
+                        """
+                    }
+                }
+                stage('gateway') {
+                    steps {
+                        sh """
+                            docker build -t ${DOCKER_REGISTRY}/circleguard/gateway-service:${APP_VERSION} services/circleguard-gateway-service/
+                            docker push ${DOCKER_REGISTRY}/circleguard/gateway-service:${APP_VERSION}
+                        """
+                    }
+                }
+                stage('dashboard') {
+                    steps {
+                        sh """
+                            docker build -t ${DOCKER_REGISTRY}/circleguard/dashboard-service:${APP_VERSION} services/circleguard-dashboard-service/
+                            docker push ${DOCKER_REGISTRY}/circleguard/dashboard-service:${APP_VERSION}
+                        """
+                    }
+                }
+                stage('notification') {
+                    steps {
+                        sh """
+                            docker build -t ${DOCKER_REGISTRY}/circleguard/notification-service:${APP_VERSION} services/circleguard-notification-service/
+                            docker push ${DOCKER_REGISTRY}/circleguard/notification-service:${APP_VERSION}
+                        """
+                    }
+                }
+            }
+        }
+
+        //  Deploy to PROD (dependency order) 
+        stage('Deploy to PROD') {
+            steps {
+                sh """
+                    # Deploy services in order
+                    kubectl apply -f k8s/prod/services/identity.yaml
+                    kubectl rollout status deployment/identity-service -n ${NAMESPACE} --timeout=300s
+                    
+                    kubectl apply -f k8s/prod/services/auth.yaml
+                    kubectl rollout status deployment/auth-service -n ${NAMESPACE} --timeout=300s
+                    
+                    kubectl apply -f k8s/prod/services/promotion.yaml
+                    kubectl rollout status deployment/promotion-service -n ${NAMESPACE} --timeout=300s
+                    
+                    kubectl apply -f k8s/prod/services/gateway.yaml
+                    kubectl rollout status deployment/gateway-service -n ${NAMESPACE} --timeout=300s
+                    
+                    kubectl apply -f k8s/prod/services/dashboard.yaml
+                    kubectl rollout status deployment/dashboard-service -n ${NAMESPACE} --timeout=300s
+                    
+                    kubectl apply -f k8s/prod/services/notification.yaml
+                    kubectl rollout status deployment/notification-service -n ${NAMESPACE} --timeout=300s
+                """
+            }
+        }
+
+        //  Release Notes 
+        stage('Generate Release Notes') {
+            steps {
+                script {
+                    def changelog = sh(script: "git log --oneline --no-merges HEAD~10..HEAD", returnStdout: true).trim()
+                    writeFile file: "RELEASE_v${APP_VERSION}.md", text: """# Release v${APP_VERSION} – ${new Date().format('yyyy-MM-dd')}
+
+## Servicios Desplegados
+| Servicio | Versión |
+|---|---|
+| identity | ${APP_VERSION} |
+| auth | ${APP_VERSION} |
+| promotion | ${APP_VERSION} |
+| gateway | ${APP_VERSION} |
+| dashboard | ${APP_VERSION} |
+| notification | ${APP_VERSION} |
+
+## Changelog
+${changelog}
+"""
+                }
+            }
+        }
+
+        stage('Tag & Publish Release') {
+            steps {
+                sh """
+                    git tag -a "v${APP_VERSION}" -m "CircleGuard release v${APP_VERSION}" || true
+                    git push origin "v${APP_VERSION}" || true
+                """
+                archiveArtifacts artifacts: "RELEASE_v${APP_VERSION}.md"
+            }
+        }
+    }
+
+    post {
+        failure {
+            sh """
+                echo "PROD release FAILED. Initiating rollback..."
+                for SVC in identity auth promotion gateway dashboard notification; do
+                    kubectl rollout undo deployment/\${SVC}-service -n ${NAMESPACE} || true
+                done
+            """
+        }
+        always { cleanWs() }
+    }
+}

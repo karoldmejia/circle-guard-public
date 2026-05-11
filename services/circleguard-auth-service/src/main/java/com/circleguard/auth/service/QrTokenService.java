@@ -9,9 +9,11 @@ import java.security.Key;
 import java.util.Date;
 import java.util.UUID;
 
+import javax.crypto.SecretKey;
+
 @Service
 public class QrTokenService {
-    private final Key key;
+    private final SecretKey key;
     private final long expiration;
 
     public QrTokenService(@Value("${qr.secret}") String secret, 

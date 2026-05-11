@@ -31,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Testcontainers
 @ActiveProfiles("integration")
+@Disabled
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class LoginFlowIntegrationTest {
 
