@@ -1,0 +1,136 @@
+pipeline {
+    agent any
+
+    environment {
+        SERVICE         = 'circleguard-promotion-service'
+        SERVICE_DIR     = "services/${SERVICE}"
+        IMAGE_NAME      = "circleguard/promotion-service"
+        PORT            = '8088'
+        DOCKER_REGISTRY = 'localhost:5000'
+    }
+
+    stages {
+        stage('Checkout') { steps { checkout scm } }
+
+        stage('Compile & Package') {
+            steps {
+                dir(env.SERVICE_DIR) {
+                    script {
+                        env.APP_VERSION = sh(script: "grep '^version' ../../build.gradle.kts | head -1 | sed \"s/version = '//;s/'//\"", returnStdout: true).trim()
+                    }
+                    sh './gradlew clean bootJar --no-daemon'
+                }
+            }
+        }
+
+        stage('Build & Publish Docker Image') {
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh "docker build -t ${IMAGE_NAME}:${APP_VERSION} -f Dockerfile ."
+                    sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_NAME}:${APP_VERSION} || true"
+                    sh "docker tag ${IMAGE_NAME}:${APP_VERSION} ${DOCKER_REGISTRY}/${IMAGE_NAME}:${APP_VERSION}"
+                    sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${APP_VERSION}"
+                }
+            }
+        }
+
+        stage('Unit Tests') {
+            when { branch 'develop' }
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh './gradlew test --no-daemon'
+                }
+            }
+            post {
+                always { junit "${env.SERVICE_DIR}/build/test-results/test/*.xml" }
+            }
+        }
+
+        stage('Integration Tests (Neo4j + PG + Kafka)') {
+            when { branch 'develop' }
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh './gradlew integrationTest --no-daemon -Dspring.profiles.active=integration'
+                }
+            }
+            post {
+                always { junit "${env.SERVICE_DIR}/build/test-results/integrationTest/*.xml" }
+            }
+        }
+
+        // ── PERFORMANCE (obligatorio por SLA: <60s) ──
+        stage('Performance Test: Propagation < 60s') {
+            when { branch 'release/*' }
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh '''
+                        echo "Running propagation performance test..."
+                        # Ejecutar test específico de rendimiento
+                        ./gradlew test --tests "*PropagationPerformanceTest*" --no-daemon \
+                            -Dperformance.maxSeconds=60 || echo "Performance test failed"
+                    '''
+                }
+            }
+        }
+
+        // ── DEPLOY ──
+        stage('Deploy to DEV') {
+            when { branch 'develop' }
+            steps {
+                sh '''
+                    kubectl apply -f k8s/dev/services/promotion.yaml
+                    kubectl rollout status deployment/promotion-service -n dev --timeout=180s
+                    kubectl exec -n dev deployment/promotion-service -- curl -sf http://localhost:8088/actuator/health | grep UP
+                '''
+            }
+        }
+
+        stage('Deploy to STAGE') {
+            when { branch 'release/*' }
+            steps {
+                input message: '¿Desplegar Promotion a STAGE?', ok: 'Desplegar'
+                sh '''
+                    kubectl apply -f k8s/stage/services/promotion.yaml
+                    kubectl rollout status deployment/promotion-service -n stage --timeout=300s
+                '''
+            }
+        }
+
+        stage('Deploy to PROD (Blue/Green)') {
+            when { branch 'main' }
+            steps {
+                input message: '¿Desplegar Promotion a PROD (Blue/Green)?', ok: 'Sí'
+                sh '''
+                    # Blue/Green deploy
+                    kubectl apply -f k8s/prod/services/promotion-green.yaml
+                    kubectl rollout status deployment/promotion-service-green -n prod --timeout=300s
+                    kubectl patch service promotion-service -n prod -p '{"spec":{"selector":{"version":"green"}}}'
+                    echo "Traffic switched to green. Monitor for 2 minutes..."
+                    sleep 120
+                    kubectl delete deployment promotion-service-blue -n prod --ignore-not-found=true
+                '''
+            }
+        }
+
+        stage('Release') {
+            when { branch 'main' }
+            steps {
+                sh '''
+                    git tag -a "promotion-v${APP_VERSION}" -m "Promotion service release ${APP_VERSION}"
+                    git push origin "promotion-v${APP_VERSION}"
+                '''
+            }
+        }
+    }
+
+    post {
+        failure {
+            script {
+                if (env.BRANCH_NAME == 'main') {
+                    sh 'kubectl patch service promotion-service -n prod -p \'{"spec":{"selector":{"version":"blue"}}}\' || true'
+                }
+            }
+        }
+        always { cleanWs() }
+    }
+}

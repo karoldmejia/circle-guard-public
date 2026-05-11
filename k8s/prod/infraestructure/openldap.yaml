@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openldap
+  namespace: prod
+  labels:
+    app: openldap
+    environment: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openldap
+  template:
+    metadata:
+      labels:
+        app: openldap
+    spec:
+      containers:
+        - name: openldap
+          image: osixia/openldap:1.5.0
+          ports:
+            - containerPort: 389
+            - containerPort: 636
+          env:
+            - name: LDAP_ORGANISATION
+              value: "CircleGuard"
+            - name: LDAP_DOMAIN
+              value: "circleguard.edu"
+            - name: LDAP_ADMIN_PASSWORD
+              value: "admin"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: openldap-service
+  namespace: prod
+spec:
+  selector:
+    app: openldap
+  ports:
+    - name: ldap
+      port: 389
+      targetPort: 389
+    - name: ldaps
+      port: 636
+      targetPort: 636

@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-service
+  namespace: dev
+  labels:
+    app: gateway-service
+    environment: dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway-service
+  template:
+    metadata:
+      labels:
+        app: gateway-service
+    spec:
+      containers:
+        - name: gateway-service
+          image: circleguard/gateway-service:latest
+          ports:
+            - containerPort: 8087
+          env:
+            - name: SPRING_DATA_REDIS_HOST
+              value: "redis-service"
+            - name: QR_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secrets
+                  key: qr-secret
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secrets
+                  key: jwt-secret
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8087
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-service
+  namespace: dev
+spec:
+  selector:
+    app: gateway-service
+  ports:
+    - port: 8087
+      targetPort: 8087

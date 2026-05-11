@@ -1,6 +1,10 @@
 version: '3.8'
 
+# local Development and ci infrastructure
+
 services:
+
+  # infraestructure
   postgres:
     image: postgres:16
     container_name: circleguard-postgres
@@ -13,6 +17,11 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   neo4j:
     image: neo4j:5.26
@@ -23,10 +32,13 @@ services:
     environment:
       NEO4J_AUTH: neo4j/password
       NEO4J_PLUGINS: '["apoc"]'
-      NEO4J_dbms_connector_bolt_listen__address: :7687
-      NEO4J_dbms_connector_bolt_advertised__address: :7687
     volumes:
       - neo4jdata:/data
+    healthcheck:
+      test: ["CMD", "wget", "-O", "/dev/null", "http://localhost:7474"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
@@ -45,28 +57,210 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
 
   redis:
     image: redis:7.2
     container_name: circleguard-redis
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   openldap:
     image: osixia/openldap:1.5.0
     container_name: circleguard-ldap
     ports:
       - "389:389"
-      - "636:636"
     environment:
       LDAP_ORGANISATION: "CircleGuard"
       LDAP_DOMAIN: "circleguard.edu"
       LDAP_ADMIN_PASSWORD: "admin"
 
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: circleguard-mailhog
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI for inspecting emails
+    healthcheck:
+      test: ["CMD", "wget", "-O", "/dev/null", "http://localhost:8025"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # microservices
+  identity-service:
+    image: circleguard/identity-service:latest
+    build:
+      context: ./services/circleguard-identity-service
+    container_name: circleguard-identity
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/circleguard_identity
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      JWT_SECRET: "my-super-secret-dev-key-32-chars-long-12345678"
+      VAULT_SECRET: "746573742d7365637265742d33322d63686172732d6c6f6e672d313233343536"
+      VAULT_HASH_SALT: "12345678"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  auth-service:
+    image: circleguard/auth-service:latest
+    build:
+      context: ./services/circleguard-auth-service
+    container_name: circleguard-auth
+    ports:
+      - "8180:8180"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/circleguard_auth
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_LDAP_URLS: ldap://openldap:389
+      SPRING_LDAP_BASE: dc=circleguard,dc=edu
+      SPRING_LDAP_USERNAME: "cn=admin,dc=circleguard,dc=edu"
+      SPRING_LDAP_PASSWORD: admin
+      JWT_SECRET: "my-super-secret-dev-key-32-chars-long-12345678"
+      QR_SECRET: "my-qr-secret-key-for-dev-1234567890"
+      IDENTITY_SERVICE_URL: http://identity-service:8083
+    depends_on:
+      postgres:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8180/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  promotion-service:
+    image: circleguard/promotion-service:latest
+    build:
+      context: ./services/circleguard-promotion-service
+    container_name: circleguard-promotion
+    ports:
+      - "8088:8088"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/circleguard_promotion
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_NEO4J_URI: bolt://neo4j:7687
+      SPRING_NEO4J_AUTHENTICATION_USERNAME: neo4j
+      SPRING_NEO4J_AUTHENTICATION_PASSWORD: password
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_DATA_REDIS_HOST: redis
+      JWT_SECRET: "my-super-secret-dev-key-32-chars-long-12345678"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/actuator/health"]
+      interval: 20s
+      timeout: 15s
+      retries: 8
+
+  gateway-service:
+    image: circleguard/gateway-service:latest
+    build:
+      context: ./services/circleguard-gateway-service
+    container_name: circleguard-gateway
+    ports:
+      - "8087:8087"
+    environment:
+      SPRING_DATA_REDIS_HOST: redis
+      QR_SECRET: "my-qr-secret-key-for-dev-1234567890"
+      JWT_SECRET: "my-super-secret-dev-key-32-chars-long-12345678"
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8087/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  dashboard-service:
+    image: circleguard/dashboard-service:latest
+    build:
+      context: ./services/circleguard-dashboard-service
+    container_name: circleguard-dashboard
+    ports:
+      - "8084:8084"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/circleguard_dashboard
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: password
+      PROMOTION_SERVICE_URL: http://promotion-service:8088
+    depends_on:
+      postgres:
+        condition: service_healthy
+      promotion-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  notification-service:
+    image: circleguard/notification-service:latest
+    build:
+      context: ./services/circleguard-notification-service
+    container_name: circleguard-notification
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AUTH_API_URL: http://auth-service:8180
+      SPRING_MAIL_HOST: mailhog
+      SPRING_MAIL_PORT: 1025
+    depends_on:
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
 volumes:
   pgdata:
   neo4jdata:
+
+networks:
+  default:
+    name: circleguard-network

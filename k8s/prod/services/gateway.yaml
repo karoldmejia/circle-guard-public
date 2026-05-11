@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-service
+  namespace: prod
+  labels:
+    app: gateway-service
+    environment: prod
+spec:
+  replicas: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: gateway-service
+  template:
+    metadata:
+      labels:
+        app: gateway-service
+    spec:
+      containers:
+        - name: gateway-service
+          image: circleguard/gateway-service:latest
+          ports:
+            - containerPort: 8087
+          env:
+            - name: SPRING_DATA_REDIS_HOST
+              value: "redis-service"
+            - name: QR_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secrets
+                  key: qr-secret
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secrets
+                  key: jwt-secret
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-service
+  namespace: prod
+spec:
+  selector:
+    app: gateway-service
+  ports:
+    - port: 8087
+      targetPort: 8087
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gateway-service-pdb
+  namespace: prod
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: gateway-service

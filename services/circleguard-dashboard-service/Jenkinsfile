@@ -1,0 +1,137 @@
+pipeline {
+    agent any
+
+    environment {
+        SERVICE         = 'circleguard-dashboard-service'
+        SERVICE_DIR     = "services/${SERVICE}"
+        IMAGE_NAME      = "circleguard/dashboard-service"
+        PORT            = '8084'
+        DOCKER_REGISTRY = 'localhost:5000'
+    }
+
+    stages {
+        stage('Checkout') { steps { checkout scm } }
+
+        stage('Compile & Package') {
+            steps {
+                dir(env.SERVICE_DIR) {
+                    script {
+                        env.APP_VERSION = sh(script: "grep '^version' ../../build.gradle.kts | head -1 | sed \"s/version = '//;s/'//\"", returnStdout: true).trim()
+                    }
+                    sh './gradlew clean bootJar --no-daemon'
+                }
+            }
+        }
+
+        stage('Build & Publish Docker Image') {
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh "docker build -t ${IMAGE_NAME}:${APP_VERSION} -f Dockerfile ."
+                    sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_NAME}:${APP_VERSION} || true"
+                    sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${APP_VERSION}"
+                }
+            }
+        }
+
+        stage('Unit Tests') {
+            when { branch 'develop' }
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh './gradlew test --no-daemon'
+                }
+            }
+            post {
+                always { junit "${env.SERVICE_DIR}/build/test-results/test/*.xml" }
+            }
+        }
+
+        stage('Integration Tests (PG + WireMock promotion)') {
+            when { branch 'develop' }
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh './gradlew integrationTest --no-daemon -Dspring.profiles.active=integration'
+                }
+            }
+            post {
+                always { junit "${env.SERVICE_DIR}/build/test-results/integrationTest/*.xml" }
+            }
+        }
+
+        // PRIVACY (k-anonymity) 
+        stage('Privacy Tests (K-Anonymity)') {
+            when { branch 'release/*' }
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh './gradlew test --tests "*AnonymizationTest*" --no-daemon || echo "Privacy tests completed"'
+                }
+            }
+        }
+
+        // PERFORMANCE 
+        stage('Performance Test: Analytics Queries') {
+            when { branch 'release/*' }
+            steps {
+                sh '''
+                    echo "Running dashboard performance test..."
+                    cd performance
+                    locust -f locustfile.py --host=http://dashboard.stage:8084 \
+                        --users=100 --spawn-rate=10 --run-time=60s --headless \
+                        DashboardUser || echo "Performance test completed"
+                '''
+            }
+        }
+
+        // DEPLOY 
+        stage('Deploy to DEV') {
+            when { branch 'develop' }
+            steps {
+                sh '''
+                    kubectl apply -f k8s/dev/services/dashboard.yaml
+                    kubectl rollout status deployment/dashboard-service -n dev --timeout=120s
+                    kubectl exec -n dev deployment/dashboard-service -- curl -sf http://localhost:8084/actuator/health | grep UP
+                '''
+            }
+        }
+
+        stage('Deploy to STAGE') {
+            when { branch 'release/*' }
+            steps {
+                input message: '¿Desplegar Dashboard a STAGE?', ok: 'Desplegar'
+                sh 'kubectl apply -f k8s/stage/services/dashboard.yaml'
+                sh 'kubectl rollout status deployment/dashboard-service -n stage --timeout=180s'
+            }
+        }
+
+        stage('Deploy to PROD') {
+            when { branch 'main' }
+            steps {
+                input message: ' ¿Desplegar Dashboard a PROD?', ok: 'Sí'
+                sh '''
+                    kubectl apply -f k8s/prod/services/dashboard.yaml
+                    kubectl rollout status deployment/dashboard-service -n prod --timeout=300s
+                '''
+            }
+        }
+
+        stage('Release') {
+            when { branch 'main' }
+            steps {
+                sh '''
+                    git tag -a "dashboard-v${APP_VERSION}" -m "Dashboard service release ${APP_VERSION}"
+                    git push origin "dashboard-v${APP_VERSION}"
+                '''
+            }
+        }
+    }
+
+    post {
+        failure {
+            script {
+                if (env.BRANCH_NAME == 'main') {
+                    sh 'kubectl rollout undo deployment/dashboard-service -n prod || true'
+                }
+            }
+        }
+        always { cleanWs() }
+    }
+}

@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: dev
+  labels:
+    app: auth-service
+    environment: dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+        - name: auth-service
+          image: circleguard/auth-service:latest
+          ports:
+            - containerPort: 8180
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://postgres-service:5432/circleguard_auth"
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: pg-credentials
+                  key: username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pg-credentials
+                  key: password
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secrets
+                  key: jwt-secret
+            - name: QR_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secrets
+                  key: qr-secret
+            - name: IDENTITY_SERVICE_URL
+              value: "http://identity-service:8083"
+            - name: SPRING_LDAP_URLS
+              value: "ldap://openldap-service:389"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8180
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: dev
+spec:
+  selector:
+    app: auth-service
+  ports:
+    - port: 8180
+      targetPort: 8180

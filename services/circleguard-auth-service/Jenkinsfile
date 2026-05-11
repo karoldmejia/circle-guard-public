@@ -1,0 +1,135 @@
+pipeline {
+    agent any
+
+    environment {
+        SERVICE        = 'circleguard-auth-service'
+        SERVICE_DIR    = "services/${SERVICE}"
+        IMAGE_NAME     = "circleguard/auth-service"
+        PORT           = '8180'
+        DOCKER_REGISTRY = 'localhost:5000'
+    }
+
+    stages {
+        stage('Checkout') { steps { checkout scm } }
+
+        stage('Validate Identity Service Contract') {
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh '''
+                        echo "Verifying IdentityClient interface is valid..."
+                        ./gradlew compileJava --no-daemon
+                        grep -r "IdentityClient" src/main/java --include="*.java" | grep -q "interface\|@FeignClient" && echo "IdentityClient contract OK"
+                    '''
+                }
+            }
+        }
+
+        stage('Compile & Package') {
+            steps {
+                dir(env.SERVICE_DIR) {
+                    script {
+                        env.APP_VERSION = sh(script: "grep '^version' ../../build.gradle.kts | head -1 | sed \"s/version = '//;s/'//\"", returnStdout: true).trim()
+                    }
+                    sh './gradlew clean bootJar --no-daemon'
+                }
+            }
+        }
+
+        stage('Build & Publish Docker Image') {
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh "docker build -t ${IMAGE_NAME}:${APP_VERSION} -f Dockerfile ."
+                    sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_NAME}:${APP_VERSION} || true"
+                    sh "docker tag ${IMAGE_NAME}:${APP_VERSION} ${DOCKER_REGISTRY}/${IMAGE_NAME}:${APP_VERSION}"
+                    sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${APP_VERSION}"
+                }
+            }
+        }
+
+        stage('Unit Tests') {
+            when { branch 'develop' }
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh './gradlew test --no-daemon'
+                }
+            }
+            post {
+                always { junit "${env.SERVICE_DIR}/build/test-results/test/*.xml" }
+            }
+        }
+
+        stage('Integration Tests') {
+            when { branch 'develop' }
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh './gradlew integrationTest --no-daemon -Dspring.profiles.active=integration'
+                }
+            }
+            post {
+                always { junit "${env.SERVICE_DIR}/build/test-results/integrationTest/*.xml" }
+            }
+        }
+
+        //  DEPLOY 
+        stage('Verify Identity is Running') {
+            when { branch 'develop' }
+            steps {
+                sh 'kubectl get pods -n dev -l app=identity-service | grep Running || (echo "Identity not ready!" && exit 1)'
+            }
+        }
+
+        stage('Deploy to DEV') {
+            when { branch 'develop' }
+            steps {
+                sh '''
+                    kubectl apply -f k8s/dev/services/auth.yaml
+                    kubectl rollout status deployment/auth-service -n dev --timeout=120s
+                    kubectl exec -n dev deployment/auth-service -- curl -sf http://localhost:8180/actuator/health | grep UP
+                '''
+            }
+        }
+
+        stage('Deploy to STAGE') {
+            when { branch 'release/*' }
+            steps {
+                input message: '¿Desplegar Auth a STAGE?', ok: 'Desplegar'
+                sh '''
+                    kubectl apply -f k8s/stage/services/auth.yaml
+                    kubectl rollout status deployment/auth-service -n stage --timeout=180s
+                '''
+            }
+        }
+
+        stage('Deploy to PROD') {
+            when { branch 'main' }
+            steps {
+                input message: '¿Desplegar Auth a PROD?', ok: 'Sí'
+                sh '''
+                    kubectl apply -f k8s/prod/services/auth.yaml
+                    kubectl rollout status deployment/auth-service -n prod --timeout=300s
+                '''
+            }
+        }
+
+        stage('Release') {
+            when { branch 'main' }
+            steps {
+                sh '''
+                    git tag -a "auth-v${APP_VERSION}" -m "Auth service release ${APP_VERSION}"
+                    git push origin "auth-v${APP_VERSION}"
+                '''
+            }
+        }
+    }
+
+    post {
+        failure {
+            script {
+                if (env.BRANCH_NAME == 'main') {
+                    sh 'kubectl rollout undo deployment/auth-service -n prod || true'
+                }
+            }
+        }
+        always { cleanWs() }
+    }
+}

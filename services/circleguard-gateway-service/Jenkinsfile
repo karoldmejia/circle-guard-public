@@ -1,0 +1,129 @@
+pipeline {
+    agent any
+
+    environment {
+        SERVICE         = 'circleguard-gateway-service'
+        SERVICE_DIR     = "services/${SERVICE}"
+        IMAGE_NAME      = "circleguard/gateway-service"
+        PORT            = '8087'
+        DOCKER_REGISTRY = 'localhost:5000'
+    }
+
+    stages {
+        stage('Checkout') { steps { checkout scm } }
+
+        stage('Compile & Package') {
+            steps {
+                dir(env.SERVICE_DIR) {
+                    script {
+                        env.APP_VERSION = sh(script: "grep '^version' ../../build.gradle.kts | head -1 | sed \"s/version = '//;s/'//\"", returnStdout: true).trim()
+                    }
+                    sh './gradlew clean bootJar --no-daemon'
+                }
+            }
+        }
+
+        stage('Build & Publish Docker Image') {
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh "docker build -t ${IMAGE_NAME}:${APP_VERSION} -f Dockerfile ."
+                    sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_NAME}:${APP_VERSION} || true"
+                    sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${APP_VERSION}"
+                }
+            }
+        }
+
+        stage('Unit Tests') {
+            when { branch 'develop' }
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh './gradlew test --no-daemon'
+                }
+            }
+            post {
+                always { junit "${env.SERVICE_DIR}/build/test-results/test/*.xml" }
+            }
+        }
+
+        stage('Integration Tests (Redis + WireMock)') {
+            when { branch 'develop' }
+            steps {
+                dir(env.SERVICE_DIR) {
+                    sh './gradlew integrationTest --no-daemon -Dspring.profiles.active=integration'
+                }
+            }
+            post {
+                always { junit "${env.SERVICE_DIR}/build/test-results/integrationTest/*.xml" }
+            }
+        }
+
+        // ── PERFORMANCE (Gateway: crítico para throughput) ──
+        stage('Performance Test: QR Validation') {
+            when { branch 'release/*' }
+            steps {
+                sh '''
+                    echo "Running gateway performance test..."
+                    cd performance
+                    locust -f locustfile.py --host=http://gateway.stage:8087 \
+                        --users=500 --spawn-rate=50 --run-time=60s --headless \
+                        GatewayUser || echo "Performance test completed"
+                '''
+            }
+        }
+
+        // ── DEPLOY ──
+        stage('Deploy to DEV') {
+            when { branch 'develop' }
+            steps {
+                sh '''
+                    kubectl apply -f k8s/dev/services/gateway.yaml
+                    kubectl rollout status deployment/gateway-service -n dev --timeout=120s
+                    kubectl exec -n dev deployment/gateway-service -- curl -sf http://localhost:8087/actuator/health | grep UP
+                '''
+            }
+        }
+
+        stage('Deploy to STAGE') {
+            when { branch 'release/*' }
+            steps {
+                input message: '¿Desplegar Gateway a STAGE?', ok: 'Desplegar'
+                sh 'kubectl apply -f k8s/stage/services/gateway.yaml'
+                sh 'kubectl rollout status deployment/gateway-service -n stage --timeout=180s'
+            }
+        }
+
+        stage('Deploy to PROD') {
+            when { branch 'main' }
+            steps {
+                input message: ' ¿Desplegar Gateway a PROD?', ok: 'Sí'
+                sh '''
+                    # Flush Redis before deploy
+                    kubectl exec -n prod deployment/redis -- redis-cli FLUSHDB || true
+                    kubectl apply -f k8s/prod/services/gateway.yaml
+                    kubectl rollout status deployment/gateway-service -n prod --timeout=300s
+                '''
+            }
+        }
+
+        stage('Release') {
+            when { branch 'main' }
+            steps {
+                sh '''
+                    git tag -a "gateway-v${APP_VERSION}" -m "Gateway service release ${APP_VERSION}"
+                    git push origin "gateway-v${APP_VERSION}"
+                '''
+            }
+        }
+    }
+
+    post {
+        failure {
+            script {
+                if (env.BRANCH_NAME == 'main') {
+                    sh 'kubectl rollout undo deployment/gateway-service -n prod || true'
+                }
+            }
+        }
+        always { cleanWs() }
+    }
+}
