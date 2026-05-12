@@ -97,6 +97,9 @@ pipeline {
                     echo "Cleaning old pods..."
                     kubectl delete pods -n dev -l app=identity-service --force --grace-period=0 || true
 
+                    echo "Applying secrets..."
+                    kubectl apply -f k8s/dev/secrets.yaml
+
                     echo "Applying deployment..."
                     kubectl apply -f k8s/dev/services/identity.yaml
 
