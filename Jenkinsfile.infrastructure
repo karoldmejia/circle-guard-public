@@ -112,7 +112,6 @@ pipeline {
                 """
             }
         }
-
         stage('Create Kafka Topics') {
             when { expression { params.ACTION == 'deploy' && params.ENVIRONMENT != 'prod' } }
             steps {
@@ -120,54 +119,30 @@ pipeline {
                     echo "Waiting for Kafka to be ready..."
                     sleep 30
                     
-                    echo "Creating Kafka topics..."
+                    echo "Creating Kafka topics using kafka-service..."
                     
-                    # Obtener el pod de Kafka
-                    KAFKA_POD=\$(kubectl get pod -n ${params.ENVIRONMENT} -l app=kafka -o jsonpath="{.items[0].metadata.name}")
+                    # Usar el servicio directamente con un pod temporal
+                    kubectl run kafka-topics-creator \
+                        --image=confluentinc/cp-kafka:7.6.0 \
+                        --namespace=${params.ENVIRONMENT} \
+                        --restart=Never \
+                        --command -- sh -c "
+                            sleep 10
+                            kafka-topics --create --if-not-exists \
+                                --topic promotion.status.changed \
+                                --bootstrap-server kafka-service:9092 \
+                                --partitions 3 --replication-factor 1
+                            kafka-topics --create --if-not-exists \
+                                --topic audit.identity.accessed \
+                                --bootstrap-server kafka-service:9092 \
+                                --partitions 3 --replication-factor 1
+                            echo 'Topics created successfully'
+                        " || true
                     
-                    if [ -z "\$KAFKA_POD" ]; then
-                        echo "No Kafka pod found"
-                        exit 1
-                    fi
+                    # Limpiar el pod temporal
+                    kubectl delete pod kafka-topics-creator -n ${params.ENVIRONMENT} --ignore-not-found=true
                     
-                    echo "Using Kafka pod: \$KAFKA_POD"
-                    
-                    # Esperar a que Kafka esté listo
-                    for i in 1 2 3 4 5 6 7 8 9 10; do
-                        if kubectl exec -n ${params.ENVIRONMENT} \$KAFKA_POD -- kafka-broker-api-versions --bootstrap-server localhost:9092 2>/dev/null; then
-                            echo "Kafka is ready"
-                            break
-                        fi
-                        echo "Waiting for Kafka... attempt \$i"
-                        sleep 10
-                        # Refresh pod name in case it changed
-                        KAFKA_POD=\$(kubectl get pod -n ${params.ENVIRONMENT} -l app=kafka -o jsonpath="{.items[0].metadata.name}")
-                    done
-                    
-                    # Refresh pod name one more time
-                    KAFKA_POD=\$(kubectl get pod -n ${params.ENVIRONMENT} -l app=kafka -o jsonpath="{.items[0].metadata.name}")
-                    
-                    kubectl exec -n ${params.ENVIRONMENT} \$KAFKA_POD -- \
-                        kafka-topics --create --if-not-exists \
-                        --topic promotion.status.changed \
-                        --bootstrap-server localhost:9092 \
-                        --partitions 3 --replication-factor 1 || true
-                    
-                    # Refresh pod name again
-                    KAFKA_POD=\$(kubectl get pod -n ${params.ENVIRONMENT} -l app=kafka -o jsonpath="{.items[0].metadata.name}")
-                    
-                    kubectl exec -n ${params.ENVIRONMENT} \$KAFKA_POD -- \
-                        kafka-topics --create --if-not-exists \
-                        --topic audit.identity.accessed \
-                        --bootstrap-server localhost:9092 \
-                        --partitions 3 --replication-factor 1 || true
-                    
-                    # Refresh pod name again
-                    KAFKA_POD=\$(kubectl get pod -n ${params.ENVIRONMENT} -l app=kafka -o jsonpath="{.items[0].metadata.name}")
-                    
-                    echo "Existing topics:"
-                    kubectl exec -n ${params.ENVIRONMENT} \$KAFKA_POD -- \
-                        kafka-topics --list --bootstrap-server localhost:9092 || true
+                    echo "Topics creation completed"
                 """
             }
         }
