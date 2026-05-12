@@ -35,7 +35,10 @@ pipeline {
             when { branch 'develop' }
             steps {
                 sh """
-                    kubectl apply -f k8s/dev/infrastructure/ -n ${NAMESPACE}
+                    for file in k8s/dev/infrastructure/*.yaml; do
+                        echo "Applying \$file"
+                        sed 's/namespace: dev//g' \$file | kubectl apply -f - -n ${NAMESPACE} || true
+                    done
                     echo "Waiting for infrastructure to be ready..."
                     sleep 60
                     kubectl get pods -n ${NAMESPACE}
