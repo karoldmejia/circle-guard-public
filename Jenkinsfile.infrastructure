@@ -118,29 +118,35 @@ pipeline {
             steps {
                 sh """
                     echo "Waiting for Kafka to be ready..."
-                    sleep 20
+                    
+                    # Esperar hasta que Kafka esté disponible
+                    KAFKA_POD=\$(kubectl get pod -n ${params.ENVIRONMENT} -l app=kafka -o jsonpath="{.items[0].metadata.name}")
+                    
+                    for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+                        if kubectl exec -n ${params.ENVIRONMENT} \$KAFKA_POD -- kafka-broker-api-versions --bootstrap-server localhost:9092 &>/dev/null; then
+                            echo "Kafka is ready!"
+                            break
+                        fi
+                        echo "Waiting for Kafka to be ready... attempt \$i"
+                        sleep 15
+                    done
                     
                     echo "Creating Kafka topics..."
-                    KAFKA_POD=\$(kubectl get pod -n ${params.ENVIRONMENT} -l app=kafka -o jsonpath="{.items[0].metadata.name}")
-                    if [ -n "\$KAFKA_POD" ]; then
-                        kubectl exec -n ${params.ENVIRONMENT} \$KAFKA_POD -- \
-                            kafka-topics --create --if-not-exists \
-                            --topic promotion.status.changed \
-                            --bootstrap-server localhost:9092 \
-                            --partitions 3 --replication-factor 1 || true
-                        
-                        kubectl exec -n ${params.ENVIRONMENT} \$KAFKA_POD -- \
-                            kafka-topics --create --if-not-exists \
-                            --topic audit.identity.accessed \
-                            --bootstrap-server localhost:9092 \
-                            --partitions 3 --replication-factor 1 || true
-                        
-                        echo "Existing topics:"
-                        kubectl exec -n ${params.ENVIRONMENT} \$KAFKA_POD -- \
-                            kafka-topics --list --bootstrap-server localhost:9092
-                    else
-                        echo "Kafka pod not found, topics will be created later"
-                    fi
+                    kubectl exec -n ${params.ENVIRONMENT} \$KAFKA_POD -- \
+                        kafka-topics --create --if-not-exists \
+                        --topic promotion.status.changed \
+                        --bootstrap-server localhost:9092 \
+                        --partitions 3 --replication-factor 1 || true
+                    
+                    kubectl exec -n ${params.ENVIRONMENT} \$KAFKA_POD -- \
+                        kafka-topics --create --if-not-exists \
+                        --topic audit.identity.accessed \
+                        --bootstrap-server localhost:9092 \
+                        --partitions 3 --replication-factor 1 || true
+                    
+                    echo "Existing topics:"
+                    kubectl exec -n ${params.ENVIRONMENT} \$KAFKA_POD -- \
+                        kafka-topics --list --bootstrap-server localhost:9092 || true
                 """
             }
         }
