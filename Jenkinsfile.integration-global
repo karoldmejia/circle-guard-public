@@ -31,20 +31,34 @@ pipeline {
             }
         }
 
-        stage('Deploy Infrastructure') {
-            when { branch 'develop' }
-            steps {
-                sh """
-                    for file in k8s/dev/infrastructure/*.yaml; do
-                        echo "Applying \$file"
-                        sed 's/namespace: dev//g' \$file | kubectl apply -f - -n ${NAMESPACE} || true
-                    done
-                    echo "Waiting for infrastructure to be ready..."
-                    sleep 60
-                    kubectl get pods -n ${NAMESPACE}
-                """
-            }
-        }
+stage('Deploy Infrastructure') {
+    when { branch 'develop' }
+    steps {
+        sh """
+            echo "Deploying infrastructure to namespace ${NAMESPACE}..."
+            
+            # Crear directorio temporal
+            mkdir -p /tmp/infra-${NAMESPACE}
+            
+            # Copiar archivos y eliminar la línea 'namespace: dev'
+            for file in k8s/dev/infrastructure/*.yaml; do
+                echo "Processing \$file"
+                # Eliminar la línea que contiene 'namespace: dev'
+                grep -v "namespace: dev" \$file > /tmp/infra-${NAMESPACE}/\$(basename \$file)
+            done
+            
+            # Aplicar los archivos limpios
+            kubectl apply -f /tmp/infra-${NAMESPACE}/ -n ${NAMESPACE}
+            
+            echo "Waiting for infrastructure to be ready..."
+            sleep 60
+            kubectl get pods -n ${NAMESPACE}
+            
+            # Limpiar
+            rm -rf /tmp/infra-${NAMESPACE}
+        """
+    }
+}
 
         stage('Deploy Identity') {
             when { branch 'develop' }
