@@ -17,6 +17,14 @@ pipeline {
             }
         }
 
+        stage('Apply Secrets') {
+            steps {
+                sh """
+                    kubectl apply -f k8s/dev/secrets.yaml -n ${NAMESPACE}
+                """
+            }
+        }
+
         //  Phase 1: Infrastructure from manifests 
         stage('Deploy Infrastructure') {
             steps {
