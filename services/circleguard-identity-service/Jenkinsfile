@@ -136,8 +136,6 @@ pipeline {
                 input message: '¿Desplegar Identity a STAGE?', ok: 'Desplegar'
 
                 sh '''
-                    kubectl delete pods -n stage -l app=identity-service --force --grace-period=0 || true
-
                     kubectl apply -f k8s/stage/services/identity.yaml
 
                     kubectl rollout status deployment/identity-service -n stage --timeout=240s
