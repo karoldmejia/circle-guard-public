@@ -8,11 +8,7 @@ pipeline {
     environment {
         NAMESPACE = "integration-test-${BUILD_NUMBER}"
     }
-
-    branches {
-        develop
-    }
-
+    
     stages {
 
         stage('Checkout') {
@@ -20,12 +16,14 @@ pipeline {
         }
 
         stage('Create Namespace') {
+            when { branch 'develop' }
             steps {
                 sh "kubectl create ns ${NAMESPACE} || true"
             }
         }
 
         stage('Apply Secrets') {
+            when { branch 'develop' }
             steps {
                 sh """
                     kubectl apply -f k8s/dev/secrets-no-namespace.yaml -n ${NAMESPACE}
@@ -34,6 +32,7 @@ pipeline {
         }
 
         stage('Deploy Infrastructure') {
+            when { branch 'develop' }
             steps {
                 sh """
                     kubectl apply -f k8s/dev/infrastructure/ -n ${NAMESPACE}
@@ -45,6 +44,7 @@ pipeline {
         }
 
         stage('Deploy Identity') {
+            when { branch 'develop' }
             steps {
                 sh """
                     kubectl apply -f k8s/dev/services/identity.yaml -n ${NAMESPACE}
@@ -54,6 +54,7 @@ pipeline {
         }
 
         stage('Deploy Auth + Promotion') {
+            when { branch 'develop' }
             parallel {
                 stage('Auth') {
                     steps {
@@ -75,6 +76,7 @@ pipeline {
         }
 
         stage('Deploy Remaining Services') {
+            when { branch 'develop' }
             parallel {
                 stage('Gateway') {
                     steps {
@@ -104,6 +106,7 @@ pipeline {
         }
 
         stage('Smoke Tests') {
+            when { branch 'develop' }
             steps {
                 sh """
                     echo "=== Health Checks via kubectl exec ==="
