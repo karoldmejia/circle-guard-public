@@ -29,9 +29,10 @@ pipeline {
             steps {
                 script {
                     env.APP_VERSION = sh(
-                        script: "grep '^version' build.gradle.kts | head -1 | sed \"s/version = '//;s/'//\"",
+                        script: "grep 'version =' build.gradle.kts | head -1 | sed 's/.*version = //; s/\"//g; s/\\x27//g' | tr -d ' '",
                         returnStdout: true
                     ).trim()
+                    echo "Version extracted: ${env.APP_VERSION}"
                 }
             }
         }
