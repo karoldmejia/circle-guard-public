@@ -28,7 +28,7 @@ pipeline {
         stage('Apply Secrets') {
             steps {
                 sh """
-                    kubectl apply -f k8s/dev/secrets.yaml -n ${NAMESPACE}
+                    kubectl apply -f k8s/dev/secrets-no-namespace.yaml -n ${NAMESPACE}
                 """
             }
         }
