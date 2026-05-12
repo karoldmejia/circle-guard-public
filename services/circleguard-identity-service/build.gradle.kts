@@ -35,3 +35,13 @@ dependencies {
     testImplementation("org.testcontainers:postgresql:1.20.6")
     testImplementation("org.testcontainers:kafka:1.20.6")
 }
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+    maxHeapSize = "2g"
+    systemProperty("org.slf4j.simpleLogger.log.org.testcontainers", "debug")
+    testLogging {
+        events("passed", "skipped", "failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+}
