@@ -76,7 +76,7 @@ pipeline {
         stage('Unit Tests') {
             when { branch 'develop' }
             steps {
-                sh "./gradlew :services:${SERVICE}:test --no-daemon"
+                sh "./gradlew :services:${SERVICE}:test --no-daemon --refresh-dependencies"
             }
             post {
                 always {
