@@ -94,10 +94,35 @@ pipeline {
             when { branch 'develop' }
             steps {
                 sh '''
+                    echo "Cleaning old pods..."
+                    kubectl delete pods -n dev -l app=identity-service --force --grace-period=0 || true
+
+                    echo "Applying deployment..."
                     kubectl apply -f k8s/dev/services/identity.yaml
-                    kubectl rollout status deployment/identity-service -n dev --timeout=120s
-                    kubectl exec -n dev deployment/identity-service -- curl -sf http://localhost:8083/actuator/health | grep UP
+
+                    echo "Waiting rollout..."
+                    kubectl rollout status deployment/identity-service -n dev --timeout=180s
+
+                    echo "Checking health..."
+                    kubectl exec -n dev deployment/identity-service -- \
+                    curl -sf http://localhost:8083/actuator/health | grep UP
+
+                    echo "Deployment successful"
                 '''
+            }
+            post {
+                failure {
+                    sh '''
+                        echo "=== PODS ==="
+                        kubectl get pods -n dev
+
+                        echo "=== DESCRIBE ==="
+                        kubectl describe deployment identity-service -n dev || true
+
+                        echo "=== LOGS ==="
+                        kubectl logs -n dev deployment/identity-service || true
+                    '''
+                }
             }
         }
 
@@ -105,9 +130,13 @@ pipeline {
             when { branch 'release/*' }
             steps {
                 input message: '¿Desplegar Identity a STAGE?', ok: 'Desplegar'
+
                 sh '''
+                    kubectl delete pods -n stage -l app=identity-service --force --grace-period=0 || true
+
                     kubectl apply -f k8s/stage/services/identity.yaml
-                    kubectl rollout status deployment/identity-service -n stage --timeout=180s
+
+                    kubectl rollout status deployment/identity-service -n stage --timeout=240s
                 '''
             }
         }
@@ -116,8 +145,10 @@ pipeline {
             when { branch 'main' }
             steps {
                 input message: '¿Desplegar Identity a PRODUCCIÓN?', ok: 'Sí'
+
                 sh '''
                     kubectl apply -f k8s/prod/services/identity.yaml
+
                     kubectl rollout status deployment/identity-service -n prod --timeout=300s
                 '''
             }
