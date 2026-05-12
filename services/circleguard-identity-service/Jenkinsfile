@@ -88,7 +88,7 @@ pipeline {
         stage('Integration Tests') {
             when { branch 'develop' }
             steps {
-                sh "./gradlew :services:${SERVICE}:integrationTest --no-daemon"
+                sh "./gradlew :services:${SERVICE}:integrationTest --no-daemon --refresh-dependencies"
             }
             post {
                 always {
