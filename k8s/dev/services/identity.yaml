@@ -19,6 +19,7 @@ spec:
       containers:
         - name: identity-service
           image: circleguard/identity-service:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 8083
           env:

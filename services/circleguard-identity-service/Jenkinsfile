@@ -6,7 +6,6 @@ pipeline {
         SERVICE_DIR    = "services/${SERVICE}"
         IMAGE_NAME     = "circleguard/identity-service"
         PORT           = '8083'
-        DOCKER_REGISTRY = 'localhost:5000'
     }
 
     triggers {
@@ -62,13 +61,6 @@ pipeline {
                         echo "Secret scan passed."
                     '''
                 }
-            }
-        }
-
-        stage('Publish Image') {
-            steps {
-                sh "docker tag ${IMAGE_NAME}:${APP_VERSION} ${DOCKER_REGISTRY}/${IMAGE_NAME}:${APP_VERSION}"
-                sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${APP_VERSION}"
             }
         }
 

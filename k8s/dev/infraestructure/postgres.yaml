@@ -6,9 +6,10 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
+  storageClassName: standard
   resources:
     requests:
-      storage: 10Gi
+      storage: 1Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -39,7 +40,7 @@ spec:
             - name: POSTGRES_PASSWORD
               value: "password"
             - name: POSTGRES_DB
-              value: "circleguard"
+              value: "circleguard_identity"
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
