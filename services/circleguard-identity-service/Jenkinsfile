@@ -38,9 +38,14 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                dir(env.SERVICE_DIR) {
-                    sh "docker build -t ${IMAGE_NAME}:${APP_VERSION} -f Dockerfile ."
-                }
+                sh '''
+                    eval $(minikube docker-env)
+
+                    docker build \
+                    -t circleguard/identity-service:latest \
+                    -f services/circleguard-identity-service/Dockerfile \
+                    services/circleguard-identity-service
+                '''
             }
         }
 
@@ -94,9 +99,6 @@ pipeline {
             when { branch 'develop' }
             steps {
                 sh '''
-                    echo "Cleaning old pods..."
-                    kubectl delete pods -n dev -l app=identity-service --force --grace-period=0 || true
-
                     echo "Applying secrets..."
                     kubectl apply -f k8s/dev/secrets.yaml
 
