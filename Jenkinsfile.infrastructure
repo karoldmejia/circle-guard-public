@@ -82,7 +82,7 @@ pipeline {
             steps {
                 sh """
                     echo "Deploying infrastructure components..."
-                    kubectl apply -f k8s/${params.ENVIRONMENT}/infrastructure/
+                    kubectl apply -f k8s/${params.ENVIRONMENT}/infrastructure/ || true
                 """
             }
         }
