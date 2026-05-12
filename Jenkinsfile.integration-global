@@ -1,8 +1,16 @@
 pipeline {
     agent any
 
+    triggers {
+        pollSCM('H/5 * * * *')
+    }
+
     environment {
         NAMESPACE = "integration-test-${BUILD_NUMBER}"
+    }
+
+    branches {
+        develop
     }
 
     stages {
@@ -25,11 +33,9 @@ pipeline {
             }
         }
 
-        //  Phase 1: Infrastructure from manifests 
         stage('Deploy Infrastructure') {
             steps {
                 sh """
-                    # Apply infrastructure manifests
                     kubectl apply -f k8s/dev/infrastructure/ -n ${NAMESPACE}
                     echo "Waiting for infrastructure to be ready..."
                     sleep 60
@@ -38,7 +44,6 @@ pipeline {
             }
         }
 
-        //  Phase 2: Deploy Services 
         stage('Deploy Identity') {
             steps {
                 sh """
@@ -98,7 +103,6 @@ pipeline {
             }
         }
 
-        //  Phase 3: Smoke Tests usando kubectl exec 
         stage('Smoke Tests') {
             steps {
                 sh """
@@ -106,15 +110,15 @@ pipeline {
                     
                     # Identity
                     kubectl exec -n ${NAMESPACE} deployment/identity-service -- \
-                        curl -sf http://localhost:8083/actuator/health | grep UP && echo "identity: OK" || echo "identity: FAIL"
+                        wget -qO- http://localhost:8083/actuator/health | grep UP && echo "identity: OK" || echo "identity: FAIL"
                     
                     # Auth
                     kubectl exec -n ${NAMESPACE} deployment/auth-service -- \
-                        curl -sf http://localhost:8180/actuator/health | grep UP && echo "auth: OK" || echo "auth: FAIL"
+                        wget -qO- http://localhost:8180/actuator/health | grep UP && echo "auth: OK" || echo "auth: FAIL"
                     
                     # Promotion
                     kubectl exec -n ${NAMESPACE} deployment/promotion-service -- \
-                        curl -sf http://localhost:8088/actuator/health | grep UP && echo "promotion: OK" || echo "promotion: FAIL"
+                        wget -qO- http://localhost:8088/actuator/health | grep UP && echo "promotion: OK" || echo "promotion: FAIL"
                     
                     echo "=== Smoke Tests Passed ==="
                 """
