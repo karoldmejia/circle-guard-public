@@ -76,7 +76,7 @@ pipeline {
         stage('Unit Tests') {
             when { branch 'develop' }
             steps {
-                sh "./gradlew :${SERVICE}:test --no-daemon"
+                sh "./gradlew :services:${SERVICE}:test --no-daemon"
             }
             post {
                 always {
@@ -88,7 +88,7 @@ pipeline {
         stage('Integration Tests') {
             when { branch 'develop' }
             steps {
-                sh "./gradlew :${SERVICE}:integrationTest --no-daemon"
+                sh "./gradlew :services:${SERVICE}:integrationTest --no-daemon"
             }
             post {
                 always {
