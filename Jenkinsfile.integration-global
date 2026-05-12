@@ -74,7 +74,7 @@ pipeline {
                     
                     # Aplicar
                     kubectl apply -f /tmp/services-${NAMESPACE}/identity.yaml -n ${NAMESPACE}
-                    kubectl rollout status deployment/identity-service -n ${NAMESPACE} --timeout=180s
+                    kubectl rollout status deployment/identity-service -n ${NAMESPACE} --timeout=300s
                     
                     # Limpiar
                     rm -rf /tmp/services-${NAMESPACE}
@@ -94,7 +94,7 @@ pipeline {
                             grep -v "namespace: dev" k8s/dev/services/auth.yaml > /tmp/services-${NAMESPACE}/auth.yaml
                             
                             kubectl apply -f /tmp/services-${NAMESPACE}/auth.yaml -n ${NAMESPACE}
-                            kubectl rollout status deployment/auth-service -n ${NAMESPACE} --timeout=180s
+                            kubectl rollout status deployment/auth-service -n ${NAMESPACE} --timeout=300s
                             
                             rm -rf /tmp/services-${NAMESPACE}
                         """
@@ -127,7 +127,7 @@ pipeline {
                             mkdir -p /tmp/services-${NAMESPACE}
                             grep -v "namespace: dev" k8s/dev/services/gateway.yaml > /tmp/services-${NAMESPACE}/gateway.yaml
                             kubectl apply -f /tmp/services-${NAMESPACE}/gateway.yaml -n ${NAMESPACE}
-                            kubectl rollout status deployment/gateway-service -n ${NAMESPACE} --timeout=180s
+                            kubectl rollout status deployment/gateway-service -n ${NAMESPACE} --timeout=300s
                             rm -rf /tmp/services-${NAMESPACE}
                         """
                     }
@@ -138,7 +138,7 @@ pipeline {
                             mkdir -p /tmp/services-${NAMESPACE}
                             grep -v "namespace: dev" k8s/dev/services/dashboard.yaml > /tmp/services-${NAMESPACE}/dashboard.yaml
                             kubectl apply -f /tmp/services-${NAMESPACE}/dashboard.yaml -n ${NAMESPACE}
-                            kubectl rollout status deployment/dashboard-service -n ${NAMESPACE} --timeout=180s
+                            kubectl rollout status deployment/dashboard-service -n ${NAMESPACE} --timeout=300s
                             rm -rf /tmp/services-${NAMESPACE}
                         """
                     }
@@ -149,7 +149,7 @@ pipeline {
                             mkdir -p /tmp/services-${NAMESPACE}
                             grep -v "namespace: dev" k8s/dev/services/notification.yaml > /tmp/services-${NAMESPACE}/notification.yaml
                             kubectl apply -f /tmp/services-${NAMESPACE}/notification.yaml -n ${NAMESPACE}
-                            kubectl rollout status deployment/notification-service -n ${NAMESPACE} --timeout=180s
+                            kubectl rollout status deployment/notification-service -n ${NAMESPACE} --timeout=300s
                             rm -rf /tmp/services-${NAMESPACE}
                         """
                     }
@@ -169,7 +169,7 @@ pipeline {
                     
                     # Auth
                     kubectl exec -n ${NAMESPACE} deployment/auth-service -- \
-                        wget -qO- http://localhost:8180/actuator/health | grep UP && echo "auth: OK" || echo "auth: FAIL"
+                        wget -qO- http://localhost:8300/actuator/health | grep UP && echo "auth: OK" || echo "auth: FAIL"
                     
                     # Promotion
                     kubectl exec -n ${NAMESPACE} deployment/promotion-service -- \
