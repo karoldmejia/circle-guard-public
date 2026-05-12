@@ -29,8 +29,6 @@ import java.security.Key;
 import java.util.Date;
 import java.util.List;
 
-import org.testcontainers.DockerClientFactory;
-import org.testcontainers.dockerclient.UnixSocketClientProviderStrategy;
 import static org.assertj.core.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -50,23 +48,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("integration")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class IdentityMappingIntegrationTest {
-
-// Agregar este import
-import org.testcontainers.DockerClientFactory;
-import org.testcontainers.dockerclient.UnixSocketClientProviderStrategy;
-
-// Al principio de la clase, fuera de cualquier método
-static {
-    System.setProperty("testcontainers", "true");
-    System.setProperty("docker.client.strategy", UnixSocketClientProviderStrategy.class.getName());
-    System.setProperty("docker.host", "unix:///var/run/docker.sock");
-    System.setProperty("docker.api.version", "1.44");
-    System.setProperty("testcontainers.reuse.enable", "true");
-    
-    DockerClientProviderStrategy strategy = new UnixSocketClientProviderStrategy();
-    DockerClientFactory.getInstance().getOrInitializeStrategy();
-}
-
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16")
         .withDatabaseName("circleguard_identity")
