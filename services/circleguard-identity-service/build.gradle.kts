@@ -6,7 +6,7 @@ plugins {
     kotlin("plugin.jpa")
 }
 
-version = "1.0.0-SNAPSHOT"
+version = "2.0.0-SNAPSHOT"
 
 dependencies {
     implementation(platform("org.springframework.boot:spring-boot-dependencies:3.2.4"))
