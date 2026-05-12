@@ -63,7 +63,7 @@ pipeline {
             steps {
                 sh '''
                     kubectl apply -f k8s/dev/services/notification.yaml
-                    kubectl rollout status deployment/notification-service -n dev --timeout=120s
+                    kubectl rollout status deployment/notification-service -n dev --timeout=300s
                     kubectl logs -l app=notification-service -n dev --tail=10 | grep "subscribed" || echo "Check Kafka subscription"
                 '''
             }

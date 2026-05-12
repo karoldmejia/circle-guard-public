@@ -87,7 +87,7 @@ pipeline {
             steps {
                 sh '''
                     kubectl apply -f k8s/dev/services/dashboard.yaml
-                    kubectl rollout status deployment/dashboard-service -n dev --timeout=120s
+                    kubectl rollout status deployment/dashboard-service -n dev --timeout=300s
                     kubectl exec -n dev deployment/dashboard-service -- curl -sf http://localhost:8084/actuator/health | grep UP
                 '''
             }

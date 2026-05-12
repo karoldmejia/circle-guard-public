@@ -18,17 +18,17 @@ echo "Deploying infrastructure..."
 kubectl apply -f k8s/dev/infrastructure/
 
 echo "Waiting for infrastructure to be ready..."
-kubectl wait --for=condition=ready pod -l app=postgres -n dev --timeout=120s
-kubectl wait --for=condition=ready pod -l app=neo4j -n dev --timeout=120s
-kubectl wait --for=condition=ready pod -l app=kafka -n dev --timeout=120s
+kubectl wait --for=condition=ready pod -l app=postgres -n dev --timeout=300s
+kubectl wait --for=condition=ready pod -l app=neo4j -n dev --timeout=300s
+kubectl wait --for=condition=ready pod -l app=kafka -n dev --timeout=300s
 
 echo "Deploying microservices..."
 kubectl apply -f k8s/dev/services/
 
 echo "Waiting for microservices to be ready..."
-kubectl wait --for=condition=ready pod -l app=identity-service -n dev --timeout=120s
-kubectl wait --for=condition=ready pod -l app=auth-service -n dev --timeout=120s
-kubectl wait --for=condition=ready pod -l app=promotion-service -n dev --timeout=120s
+kubectl wait --for=condition=ready pod -l app=identity-service -n dev --timeout=300s
+kubectl wait --for=condition=ready pod -l app=auth-service -n dev --timeout=300s
+kubectl wait --for=condition=ready pod -l app=promotion-service -n dev --timeout=300s
 
 echo -e "${GREEN} DEV environment deployed successfully!${NC}"
 echo ""

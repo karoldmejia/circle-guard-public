@@ -77,7 +77,7 @@ pipeline {
             steps {
                 sh '''
                     kubectl apply -f k8s/dev/services/gateway.yaml
-                    kubectl rollout status deployment/gateway-service -n dev --timeout=120s
+                    kubectl rollout status deployment/gateway-service -n dev --timeout=300s
                     kubectl exec -n dev deployment/gateway-service -- curl -sf http://localhost:8087/actuator/health | grep UP
                 '''
             }

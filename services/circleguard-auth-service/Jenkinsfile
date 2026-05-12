@@ -83,7 +83,7 @@ pipeline {
             steps {
                 sh '''
                     kubectl apply -f k8s/dev/services/auth.yaml
-                    kubectl rollout status deployment/auth-service -n dev --timeout=120s
+                    kubectl rollout status deployment/auth-service -n dev --timeout=300s
                     kubectl exec -n dev deployment/auth-service -- curl -sf http://localhost:8180/actuator/health | grep UP
                 '''
             }

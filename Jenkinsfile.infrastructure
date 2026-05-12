@@ -120,7 +120,7 @@ pipeline {
                     steps {
                         sh """
                             kubectl apply -f k8s/${params.ENVIRONMENT}/infrastructure/openldap.yaml
-                            kubectl rollout status deployment/openldap -n ${params.ENVIRONMENT} --timeout=120s
+                            kubectl rollout status deployment/openldap -n ${params.ENVIRONMENT} --timeout=300s
                         """
                     }
                 }
@@ -141,7 +141,7 @@ pipeline {
             steps {
                 sh """
                     kubectl apply -f k8s/${params.ENVIRONMENT}/infrastructure/zookeeper.yaml
-                    kubectl rollout status deployment/zookeeper -n ${params.ENVIRONMENT} --timeout=120s
+                    kubectl rollout status deployment/zookeeper -n ${params.ENVIRONMENT} --timeout=300s
                 """
             }
         }
