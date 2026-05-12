@@ -34,6 +34,8 @@ dependencies {
     testImplementation("org.testcontainers:junit-jupiter:1.20.6")
     testImplementation("org.testcontainers:postgresql:1.20.6")
     testImplementation("org.testcontainers:kafka:1.20.6")
+    testImplementation("com.github.docker-java:docker-java-core:3.4.1")
+testImplementation("com.github.docker-java:docker-java-transport-httpclient5:3.4.1")
 }
 
 tasks.withType<Test> {
