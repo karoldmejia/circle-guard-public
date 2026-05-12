@@ -31,41 +31,53 @@ pipeline {
             }
         }
 
-stage('Deploy Infrastructure') {
-    when { branch 'develop' }
-    steps {
-        sh """
-            echo "Deploying infrastructure to namespace ${NAMESPACE}..."
-            
-            # Crear directorio temporal
-            mkdir -p /tmp/infra-${NAMESPACE}
-            
-            # Copiar archivos y eliminar la línea 'namespace: dev'
-            for file in k8s/dev/infrastructure/*.yaml; do
-                echo "Processing \$file"
-                # Eliminar la línea que contiene 'namespace: dev'
-                grep -v "namespace: dev" \$file > /tmp/infra-${NAMESPACE}/\$(basename \$file)
-            done
-            
-            # Aplicar los archivos limpios
-            kubectl apply -f /tmp/infra-${NAMESPACE}/ -n ${NAMESPACE}
-            
-            echo "Waiting for infrastructure to be ready..."
-            sleep 60
-            kubectl get pods -n ${NAMESPACE}
-            
-            # Limpiar
-            rm -rf /tmp/infra-${NAMESPACE}
-        """
-    }
-}
+        stage('Deploy Infrastructure') {
+            when { branch 'develop' }
+            steps {
+                sh """
+                    echo "Deploying infrastructure to namespace ${NAMESPACE}..."
+                    
+                    # Crear directorio temporal
+                    mkdir -p /tmp/infra-${NAMESPACE}
+                    
+                    # Copiar archivos y eliminar la línea 'namespace: dev'
+                    for file in k8s/dev/infrastructure/*.yaml; do
+                        echo "Processing \$file"
+                        # Eliminar la línea que contiene 'namespace: dev'
+                        grep -v "namespace: dev" \$file > /tmp/infra-${NAMESPACE}/\$(basename \$file)
+                    done
+                    
+                    # Aplicar los archivos limpios
+                    kubectl apply -f /tmp/infra-${NAMESPACE}/ -n ${NAMESPACE}
+                    
+                    echo "Waiting for infrastructure to be ready..."
+                    sleep 60
+                    kubectl get pods -n ${NAMESPACE}
+                    
+                    # Limpiar
+                    rm -rf /tmp/infra-${NAMESPACE}
+                """
+            }
+        }
 
         stage('Deploy Identity') {
             when { branch 'develop' }
             steps {
                 sh """
-                    kubectl apply -f k8s/dev/services/identity.yaml -n ${NAMESPACE}
+                    echo "Deploying Identity service to namespace ${NAMESPACE}..."
+                    
+                    # Crear directorio temporal para servicios
+                    mkdir -p /tmp/services-${NAMESPACE}
+                    
+                    # Copiar y limpiar archivo de identity
+                    grep -v "namespace: dev" k8s/dev/services/identity.yaml > /tmp/services-${NAMESPACE}/identity.yaml
+                    
+                    # Aplicar
+                    kubectl apply -f /tmp/services-${NAMESPACE}/identity.yaml -n ${NAMESPACE}
                     kubectl rollout status deployment/identity-service -n ${NAMESPACE} --timeout=180s
+                    
+                    # Limpiar
+                    rm -rf /tmp/services-${NAMESPACE}
                 """
             }
         }
@@ -76,16 +88,30 @@ stage('Deploy Infrastructure') {
                 stage('Auth') {
                     steps {
                         sh """
-                            kubectl apply -f k8s/dev/services/auth.yaml -n ${NAMESPACE}
+                            echo "Deploying Auth service to namespace ${NAMESPACE}..."
+                            
+                            mkdir -p /tmp/services-${NAMESPACE}
+                            grep -v "namespace: dev" k8s/dev/services/auth.yaml > /tmp/services-${NAMESPACE}/auth.yaml
+                            
+                            kubectl apply -f /tmp/services-${NAMESPACE}/auth.yaml -n ${NAMESPACE}
                             kubectl rollout status deployment/auth-service -n ${NAMESPACE} --timeout=180s
+                            
+                            rm -rf /tmp/services-${NAMESPACE}
                         """
                     }
                 }
                 stage('Promotion') {
                     steps {
                         sh """
-                            kubectl apply -f k8s/dev/services/promotion.yaml -n ${NAMESPACE}
+                            echo "Deploying Promotion service to namespace ${NAMESPACE}..."
+                            
+                            mkdir -p /tmp/services-${NAMESPACE}
+                            grep -v "namespace: dev" k8s/dev/services/promotion.yaml > /tmp/services-${NAMESPACE}/promotion.yaml
+                            
+                            kubectl apply -f /tmp/services-${NAMESPACE}/promotion.yaml -n ${NAMESPACE}
                             kubectl rollout status deployment/promotion-service -n ${NAMESPACE} --timeout=300s
+                            
+                            rm -rf /tmp/services-${NAMESPACE}
                         """
                     }
                 }
@@ -98,24 +124,33 @@ stage('Deploy Infrastructure') {
                 stage('Gateway') {
                     steps {
                         sh """
-                            kubectl apply -f k8s/dev/services/gateway.yaml -n ${NAMESPACE}
+                            mkdir -p /tmp/services-${NAMESPACE}
+                            grep -v "namespace: dev" k8s/dev/services/gateway.yaml > /tmp/services-${NAMESPACE}/gateway.yaml
+                            kubectl apply -f /tmp/services-${NAMESPACE}/gateway.yaml -n ${NAMESPACE}
                             kubectl rollout status deployment/gateway-service -n ${NAMESPACE} --timeout=180s
+                            rm -rf /tmp/services-${NAMESPACE}
                         """
                     }
                 }
                 stage('Dashboard') {
                     steps {
                         sh """
-                            kubectl apply -f k8s/dev/services/dashboard.yaml -n ${NAMESPACE}
+                            mkdir -p /tmp/services-${NAMESPACE}
+                            grep -v "namespace: dev" k8s/dev/services/dashboard.yaml > /tmp/services-${NAMESPACE}/dashboard.yaml
+                            kubectl apply -f /tmp/services-${NAMESPACE}/dashboard.yaml -n ${NAMESPACE}
                             kubectl rollout status deployment/dashboard-service -n ${NAMESPACE} --timeout=180s
+                            rm -rf /tmp/services-${NAMESPACE}
                         """
                     }
                 }
                 stage('Notification') {
                     steps {
                         sh """
-                            kubectl apply -f k8s/dev/services/notification.yaml -n ${NAMESPACE}
+                            mkdir -p /tmp/services-${NAMESPACE}
+                            grep -v "namespace: dev" k8s/dev/services/notification.yaml > /tmp/services-${NAMESPACE}/notification.yaml
+                            kubectl apply -f /tmp/services-${NAMESPACE}/notification.yaml -n ${NAMESPACE}
                             kubectl rollout status deployment/notification-service -n ${NAMESPACE} --timeout=180s
+                            rm -rf /tmp/services-${NAMESPACE}
                         """
                     }
                 }
