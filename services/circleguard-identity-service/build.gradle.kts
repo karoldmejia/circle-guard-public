@@ -53,21 +53,27 @@ tasks.named<Test>("test") {
     exclude("**/integration/**")
 }
 
-// Integration tests
-val integrationTest = tasks.register<Test>("integrationTest") {
+tasks.register<Test>("integrationTest") {
     description = "Runs integration tests."
     group = "verification"
-    
-    // Incluir solo los tests en el paquete integration
+
     include("**/integration/**")
-    
-    // Configuración específica para Testcontainers
-    systemProperty("docker.client.strategy", "org.testcontainers.dockerclient.UnixSocketClientProviderStrategy")
+
+    useJUnitPlatform()
+
+    systemProperty(
+        "docker.client.strategy",
+        "org.testcontainers.dockerclient.UnixSocketClientProviderStrategy"
+    )
     systemProperty("docker.host", "unix:///var/run/docker.sock")
     systemProperty("docker.api.version", "1.44")
-}
 
-// Hacer que check dependa de integrationTest
+    testLogging {
+        events("passed", "skipped", "failed")
+        exceptionFormat =
+            org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+}
 tasks.named("check") {
-    dependsOn(integrationTest)
+    dependsOn("integrationTest")
 }
