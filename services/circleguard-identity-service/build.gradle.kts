@@ -38,42 +38,36 @@ dependencies {
     testImplementation("com.github.docker-java:docker-java-transport-httpclient5:3.4.1")
 }
 
+// Configuración base para todos los tests
 tasks.withType<Test> {
     useJUnitPlatform()
     maxHeapSize = "2g"
-    systemProperty("org.slf4j.simpleLogger.log.org.testcontainers", "debug")
-    systemProperty("docker.client.strategy", "org.testcontainers.dockerclient.UnixSocketClientProviderStrategy")
-    systemProperty("docker.host", "unix:///var/run/docker.sock")
-    systemProperty("docker.api.version", "1.44")
     testLogging {
         events("passed", "skipped", "failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
 
+// Unit tests (excluye integration)
 tasks.named<Test>("test") {
     exclude("**/integration/**")
 }
 
-sourceSets {
-    create("integrationTest") {
-        compileClasspath += sourceSets.main.get().output
-        runtimeClasspath += sourceSets.main.get().output
-        java {
-            srcDir("src/test/java")
-            include("**/integration/**")
-        }
-    }
-}
-
+// Integration tests
 val integrationTest = tasks.register<Test>("integrationTest") {
     description = "Runs integration tests."
     group = "verification"
-    testClassesDirs = sourceSets["integrationTest"].output.classesDirs
-    classpath = sourceSets["integrationTest"].runtimeClasspath
-    shouldRunAfter(tasks.named("test"))
+    
+    // Incluir solo los tests en el paquete integration
+    include("**/integration/**")
+    
+    // Configuración específica para Testcontainers
+    systemProperty("docker.client.strategy", "org.testcontainers.dockerclient.UnixSocketClientProviderStrategy")
+    systemProperty("docker.host", "unix:///var/run/docker.sock")
+    systemProperty("docker.api.version", "1.44")
 }
 
+// Hacer que check dependa de integrationTest
 tasks.named("check") {
     dependsOn(integrationTest)
 }
