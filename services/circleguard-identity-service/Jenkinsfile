@@ -19,12 +19,25 @@ pipeline {
         }
 
         stage('Compile & Package') {
+            when { 
+                anyOf {
+                    changeset "services/${SERVICE}/**"
+                    changeset "build.gradle.kts"
+                    changeset "gradle/**"
+                }
+            }
             steps {
                 sh "./gradlew :services:${SERVICE}:clean :services:${SERVICE}:bootJar --no-daemon"
             }
         }
 
         stage('Extract Version') {
+            when { 
+                anyOf {
+                    changeset "services/${SERVICE}/**"
+                    changeset "build.gradle.kts"
+                }
+            }
             steps {
                 script {
                     env.APP_VERSION = sh(
@@ -37,6 +50,12 @@ pipeline {
         }
 
         stage('Build Docker Image') {
+            when { 
+                anyOf {
+                    changeset "services/${SERVICE}/**"
+                    changeset "Dockerfile"
+                }
+            }
             steps {
                 sh '''
                     eval $(minikube docker-env)
@@ -50,12 +69,18 @@ pipeline {
         }
 
         stage('Security Scan (Trivy)') {
+            when { 
+                changeset "services/${SERVICE}/**"
+            }
             steps {
                 sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_NAME}:${APP_VERSION} || true"
             }
         }
 
         stage('Scan for Hardcoded Secrets') {
+            when { 
+                changeset "services/${SERVICE}/**"
+            }
             steps {
                 dir(env.SERVICE_DIR) {
                     sh '''
@@ -71,7 +96,10 @@ pipeline {
 
         // TESTS 
         stage('Unit Tests') {
-            when { branch 'develop' }
+            when { 
+                branch 'develop' 
+                changeset "services/${SERVICE}/**"
+            }
             steps {
                 sh "./gradlew :services:${SERVICE}:test --no-daemon --refresh-dependencies"
             }
@@ -83,7 +111,10 @@ pipeline {
         }
 
         stage('Integration Tests') {
-            when { branch 'develop' }
+            when { 
+                branch 'develop'
+                changeset "services/${SERVICE}/**"
+            }
             steps {
                 sh "./gradlew :services:${SERVICE}:integrationTest --no-daemon --refresh-dependencies"
             }
@@ -96,7 +127,10 @@ pipeline {
 
         // DEPLOY 
         stage('Deploy to DEV') {
-            when { branch 'develop' }
+            when { 
+                branch 'develop'
+                changeset "services/${SERVICE}/**"
+            }
             steps {
                 sh '''
                     echo "Applying secrets..."
@@ -131,7 +165,10 @@ pipeline {
         }
 
         stage('Deploy to STAGE') {
-            when { branch 'release/*' }
+            when { 
+                branch 'release/*'
+                changeset "services/${SERVICE}/**"
+            }
             steps {
                 input message: '¿Desplegar Identity a STAGE?', ok: 'Desplegar'
 
@@ -144,7 +181,10 @@ pipeline {
         }
 
         stage('Deploy to PROD') {
-            when { branch 'main' }
+            when { 
+                branch 'main'
+                changeset "services/${SERVICE}/**"
+            }
             steps {
                 input message: '¿Desplegar Identity a PRODUCCIÓN?', ok: 'Sí'
 
@@ -158,7 +198,10 @@ pipeline {
 
         // RELEASE 
         stage('Release') {
-            when { branch 'main' }
+            when { 
+                branch 'main'
+                changeset "services/${SERVICE}/**"
+            }
             steps {
                 sh '''
                     git tag -a "identity-v${APP_VERSION}" -m "Identity service release ${APP_VERSION}"
