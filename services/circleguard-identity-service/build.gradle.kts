@@ -26,4 +26,8 @@ dependencies {
     testImplementation("org.springframework.kafka:spring-kafka-test")
     testImplementation("org.springframework.security:spring-security-test")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    testImplementation("org.testcontainers:testcontainers:2.0.3")
+    testImplementation("org.testcontainers:junit-jupiter:2.0.3")
+    testImplementation("org.testcontainers:postgresql:2.0.3")
+    testImplementation("org.testcontainers:kafka:2.0.3")
 }
