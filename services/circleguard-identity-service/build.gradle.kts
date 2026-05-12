@@ -8,6 +8,10 @@ plugins {
 
 version = "2.0.0-SNAPSHOT"
 
+repositories {
+    mavenCentral()
+}
+
 dependencies {
     implementation(platform("org.springframework.boot:spring-boot-dependencies:3.2.4"))
     testImplementation(platform("org.springframework.boot:spring-boot-dependencies:3.2.4"))
