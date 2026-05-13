@@ -20,11 +20,12 @@ pipeline {
             steps {
                 sh """
                     cd performance
+
                     locust -f locustfile.py \
-                        --host=http://localhost:8087 \
-                        --users=${USERS} \
-                        --spawn-rate=${SPAWN_RATE} \
-                        --run-time=${RUN_TIME}s \
+                        --host=http://gateway-service.stage.svc.cluster.local:8087 \
+                        --users=${params.USERS} \
+                        --spawn-rate=${params.SPAWN_RATE} \
+                        --run-time=${params.RUN_TIME}s \
                         --headless \
                         --only-summary
                 """
