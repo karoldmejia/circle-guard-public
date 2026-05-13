@@ -36,7 +36,7 @@ pipeline {
                     echo "Deploying infrastructure to namespace ${NAMESPACE}..."
                     
                     # Deploy infrastructure
-                    for file in postgres.yaml openldap.yaml redis.yaml neo4j.yaml zookeeper.yaml kafka.yaml; do
+                    for file in postgres.yaml openldap.yaml redis.yaml neo4j.yaml zookeeper.yaml kafka.yaml mailhog.yaml; do
                         echo "Processing \$file"
                         grep -v "namespace: dev" k8s/dev/infrastructure/\$file | kubectl apply -f - -n ${NAMESPACE}
                     done
@@ -52,6 +52,9 @@ pipeline {
                     
                     echo "Waiting for Kafka..."
                     kubectl wait --for=condition=ready pod -l app=kafka -n ${NAMESPACE} --timeout=300s
+
+                    echo "Waiting for MailHog..."
+                    kubectl wait --for=condition=ready pod -l app=mailhog -n ${NAMESPACE} --timeout=180s
                     
                     echo "Infrastructure ready"
                     kubectl get pods -n ${NAMESPACE}
