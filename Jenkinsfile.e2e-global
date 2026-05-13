@@ -93,12 +93,12 @@ pipeline {
                     echo " TESTING LOGIN FLOW "
                     
                     # Probar login con credenciales válidas
-                    LOGIN_RESPONSE=$(wget -qO- \
+                    LOGIN_RESPONSE=\$(wget -qO- \
                         --method=POST \
                         --header="Content-Type: application/json" \
                         --body-data="{\"username\":\"student1\",\"password\":\"password123\"}" \
                         http://localhost:8180/api/v1/auth/login 2>/dev/null || true)
-                        
+
                     if echo "\$LOGIN_RESPONSE" | grep -q "token"; then
                         echo "Login successful, token received"
                     else
