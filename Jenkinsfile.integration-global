@@ -152,7 +152,10 @@ pipeline {
         stage('Deploy to STAGE (if release branch)') {
             when { branch 'release/*' }
             steps {
-                sh """
+                sh """                    
+                    echo "Creating stage namespace if not exists..."
+                    kubectl create namespace stage --dry-run=client -o yaml | kubectl apply -f -
+                    
                     echo "Deploying to STAGE namespace..."
                     
                     # Aplicar secrets a stage
@@ -179,7 +182,10 @@ pipeline {
                         kubectl rollout status deployment/\${service}-service -n stage --timeout=300s
                     done
                     
-                    echo "Stage environment ready"
+                    echo "Stage deployment complete. Triggering E2E tests..."
+                    
+                    // Trigger E2E pipeline
+                    build job: 'circle-guard-e2e-stage', wait: false, propagate: false
                 """
             }
         }
