@@ -209,21 +209,48 @@ class PropagationUser(HttpUser):
     Simulates health center reporting positive cases.
     Low volume but CPU-intensive (Neo4j graph traversal).
     """
-    wait_time = between(30, 60) 
+    wait_time = between(30, 60)
     host = "http://localhost:8088"
     weight = 1
 
     def on_start(self):
-        self.hc_token = get_access_token(str(uuid.uuid4()))
-        self.target_user = TEST_USER_IDS[0]
+        response = self.client.post(
+            "http://localhost:8180/api/v1/auth/login",
+            json={"username": "admin1", "password": "admin123"},
+            catch_response=False
+        )
+        if response.status_code == 200:
+            self.hc_token = response.json().get("token")
+            print(f"Token obtenido para PropagationUser")
+        else:
+            self.hc_token = None
+            print(f"No se pudo obtener token: {response.status_code}")
+        
+        # Usar un anonymousId real (debe existir en Identity)
+        self.target_user = "e2e.confirmed.student@university.edu"
 
     @task(1)
     def report_positive(self):
-        """Report a positive case and measure time for the propagation response."""
+        if not self.hc_token:
+            return
+        identity_response = self.client.post(
+            "http://localhost:8083/api/v1/identities/map",
+            json={"realIdentity": self.target_user},
+            headers={"Authorization": f"Bearer {self.hc_token}"},
+            catch_response=True
+        )
+        
+        if identity_response.status_code != 200:
+            return
+        
+        anonymous_id = identity_response.json().get("anonymousId")
+        if not anonymous_id:
+            return
+        
         start = time.time()
         with self.client.post(
             f"{PROMO_BASE}/health/report",
-            json={"anonymousId": self.target_user, "status": "CONFIRMED"},
+            json={"anonymousId": anonymous_id, "status": "CONFIRMED"},
             headers={"Authorization": f"Bearer {self.hc_token}"},
             name="/health/report [CONFIRMED]",
             catch_response=True
@@ -234,26 +261,24 @@ class PropagationUser(HttpUser):
                     resp.failure(f"Propagation took {elapsed:.1f}s – exceeds 60s SLA!")
                 else:
                     resp.success()
-            elif resp.status_code in (401, 403):
-                resp.success()  # Auth issue in perf test, not a propagation failure
             else:
-                resp.failure(f"Status {resp.status_code}")
+                resp.failure(f"Status {resp.status_code} - Response: {resp.text}")
 
     @task(3)
     def check_health_stats(self):
-        """Poll health stats (read-heavy, low cost)."""
+        if not self.hc_token:
+            return
         with self.client.get(
             f"{PROMO_BASE}/health-status/stats",
             headers={"Authorization": f"Bearer {self.hc_token}"},
             name="/health-status/stats",
             catch_response=True
         ) as resp:
-            if resp.status_code in (200, 401, 403):
+            if resp.status_code == 200:
                 resp.success()
             else:
                 resp.failure(f"Status {resp.status_code}")
-
-
+                
 # Scenario 5: Mixed Peak Load (8 AM scenario)
 # 20% login, 50% QR validation, 30% dashboard
 class MixedLoadUser(HttpUser):
