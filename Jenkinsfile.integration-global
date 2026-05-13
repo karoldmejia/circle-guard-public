@@ -163,10 +163,18 @@ pipeline {
                     
                     # Desplegar infraestructura a stage
                     for file in k8s/dev/infrastructure/*.yaml; do
+                        echo "Processing \$file"
                         grep -v "namespace: dev" \$file | kubectl apply -f - -n stage || true
                     done
                     
+                    echo "Waiting for PostgreSQL to be ready..."
+                    kubectl wait --for=condition=ready pod -l app=postgres -n stage --timeout=180s
+                    
+                    echo "Waiting for Redis..."
+                    kubectl wait --for=condition=ready pod -l app=redis -n stage --timeout=180s
+                    
                     # Crear bases de datos
+                    echo "Creating databases..."
                     kubectl exec -n stage deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_identity;" || true
                     kubectl exec -n stage deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_auth;" || true
                     kubectl exec -n stage deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_promotion;" || true
@@ -174,17 +182,32 @@ pipeline {
                     
                     # Desplegar servicios a stage
                     for service in identity auth promotion gateway dashboard notification; do
+                        echo "Deploying \$service..."
                         grep -v "namespace: dev" k8s/dev/services/\${service}.yaml | kubectl apply -f - -n stage
                     done
                     
-                    # Esperar a que todo esté listo
-                    for service in identity auth promotion gateway dashboard notification; do
-                        kubectl rollout status deployment/\${service}-service -n stage --timeout=300s
-                    done
+                    # Esperar a que los servicios críticos estén listos (SIN || true)
+                    echo "Waiting for Identity..."
+                    kubectl rollout status deployment/identity-service -n stage --timeout=300s
                     
-                    echo "Stage deployment complete. Triggering E2E tests..."
+                    echo "Waiting for Auth..."
+                    kubectl rollout status deployment/auth-service -n stage --timeout=300s
                     
-                    // Trigger E2E pipeline
+                    echo "Waiting for Gateway..."
+                    kubectl rollout status deployment/gateway-service -n stage --timeout=300s
+                    
+                    echo "Waiting for Dashboard..."
+                    kubectl rollout status deployment/dashboard-service -n stage --timeout=300s
+                    
+                    echo "Waiting for Notification..."
+                    kubectl rollout status deployment/notification-service -n stage --timeout=300s
+                    
+                    echo "Waiting for Promotion..."
+                    kubectl rollout status deployment/promotion-service -n stage --timeout=600s
+                    
+                    echo "Stage environment ready"
+                    
+                    # Trigger E2E pipeline
                     build job: 'circle-guard-e2e-stage', wait: false, propagate: false
                 """
             }
