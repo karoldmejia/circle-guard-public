@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        NAMESPACE "stage"
+        NAMESPACE = "stage"
     }
 
     stages {
@@ -10,11 +10,11 @@ pipeline {
         stage('Verify All Services Running') {
             steps {
                 sh """
-                    echo"Verifying all stage services are running"
+                    echo " Verifying all stage services are running "
                     for SERVICE in identity-service auth-service promotion-service gateway-service dashboard-service notification-service; do
-                        kubectl get pod -l app\$SERVICE -n ${NAMESPACE} | grep Running || (echo"\$SERVICE is NOT running!"&& exit 1)
+                        kubectl get pod -l app=\$SERVICE -n ${NAMESPACE} | grep Running || (echo "\$SERVICE is NOT running!" && exit 1)
                     done
-                    echo"All services are healthy."
+                    echo "All services are healthy."
                 """
             }
         }
@@ -22,86 +22,93 @@ pipeline {
         stage('Run E2E Tests') {
             steps {
                 sh """
-                    echo"Running E2E tests against stage environment..."
+                    echo "Running E2E tests against stage environment..."
                     
                     # Configurar port-forwards
                     kubectl port-forward -n ${NAMESPACE} service/identity-service 8083:8083 > /dev/null 2>&1 &
+                    PF1=\$!
                     kubectl port-forward -n ${NAMESPACE} service/auth-service 8180:8180 > /dev/null 2>&1 &
+                    PF2=\$!
                     kubectl port-forward -n ${NAMESPACE} service/promotion-service 8088:8088 > /dev/null 2>&1 &
+                    PF3=\$!
                     kubectl port-forward -n ${NAMESPACE} service/gateway-service 8087:8087 > /dev/null 2>&1 &
+                    PF4=\$!
                     kubectl port-forward -n ${NAMESPACE} service/dashboard-service 8084:8084 > /dev/null 2>&1 &
+                    PF5=\$!
                     kubectl port-forward -n ${NAMESPACE} service/notification-service 8082:8082 > /dev/null 2>&1 &
+                    PF6=\$!
                     
                     sleep 10
                     
-                    echo"HEALTH CHECKS"
+                    echo " HEALTH CHECKS "
                     
                     # Identity
                     if wget -qO- http://localhost:8083/actuator/health 2>/dev/null | grep -q UP; then
-                        echo"Identity service is UP"
+                        echo "Identity service is UP"
                     else
-                        echo"Identity service is DOWN"
+                        echo "Identity service is DOWN"
                         exit 1
                     fi
                     
                     # Auth
                     if wget -qO- http://localhost:8180/actuator/health 2>/dev/null | grep -q UP; then
-                        echo"Auth service is UP"
+                        echo "Auth service is UP"
                     else
-                        echo"Auth service is DOWN"
+                        echo "Auth service is DOWN"
                         exit 1
                     fi
                     
                     # Promotion
                     if wget -qO- http://localhost:8088/actuator/health 2>/dev/null | grep -q UP; then
-                        echo"Promotion service is UP"
+                        echo "Promotion service is UP"
                     else
-                        echo"Promotion service is DOWN"
+                        echo "Promotion service is DOWN"
                         exit 1
                     fi
                     
                     # Gateway
                     if wget -qO- http://localhost:8087/actuator/health 2>/dev/null | grep -q UP; then
-                        echo"Gateway service is UP"
+                        echo "Gateway service is UP"
                     else
-                        echo"Gateway service is DOWN"
+                        echo "Gateway service is DOWN"
                         exit 1
                     fi
                     
                     # Dashboard
                     if wget -qO- http://localhost:8084/actuator/health 2>/dev/null | grep -q UP; then
-                        echo"Dashboard service is UP"
+                        echo "Dashboard service is UP"
                     else
-                        echo"Dashboard service is DOWN"
+                        echo "Dashboard service is DOWN"
                         exit 1
                     fi
                     
                     # Notification
                     if wget -qO- http://localhost:8082/actuator/health 2>/dev/null | grep -q UP; then
-                        echo"Notification service is UP"
+                        echo "Notification service is UP"
                     else
-                        echo"Notification service is DOWN"
+                        echo "Notification service is DOWN"
                         exit 1
                     fi
                     
-                    echo"TESTING LOGIN FLOW"
+                    echo " TESTING LOGIN FLOW "
                     
                     # Probar login con credenciales válidas
-                    LOGIN_RESPONSE\$(wget -qO- --post-data'{"username":"student1","password":"password123"}' \
-                        --header'Content-Type: application/json' \
+                    LOGIN_RESPONSE=\$(wget -qO- --method=POST \
+                        --header='Content-Type: application/json' \
+                        --body-data='{"username":"student1","password":"password123"}' \
                         http://localhost:8180/api/v1/auth/login 2>/dev/null)
                     
-                    if echo"\$LOGIN_RESPONSE"| grep -q"token"; then
-                        echo"Login successful, token received"
+                    if echo "\$LOGIN_RESPONSE" | grep -q "token"; then
+                        echo "Login successful, token received"
                     else
-                        echo"Login failed"
+                        echo "Login failed"
                         exit 1
                     fi
                     
-                    echo"ALL E2E TESTS PASSED"
+                    echo " ALL E2E TESTS PASSED "
                     
                     # Matar port-forwards
-                    kill %1 %2 %3 %4 %5 %6 2>/dev/null || true
+                    kill \$PF1 \$PF2 \$PF3 \$PF4 \$PF5 \$PF6 2>/dev/null || true
                 """
             }
         }
