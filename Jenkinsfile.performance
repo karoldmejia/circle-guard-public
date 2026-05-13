@@ -4,6 +4,7 @@ pipeline {
             image 'locustio/locust'
         }
     }
+
     parameters {
         choice(name: 'TEST_TYPE', choices: ['gateway', 'login', 'dashboard', 'propagation', 'mixed'])
         string(name: 'USERS', defaultValue: '100')
@@ -19,18 +20,13 @@ pipeline {
             }
         }
 
-        stage('Install Locust') {
-            steps {
-                sh "pip3 install --quiet locust"
-            }
-        }
-
         stage('Run Tests') {
             steps {
                 sh """
                     cd performance
+
                     locust -f locustfile.py \
-                        --host=http://localhost:8087 \
+                        --host=http://gateway-service.stage.svc.cluster.local:8087 \
                         --users=${USERS} \
                         --spawn-rate=${SPAWN_RATE} \
                         --run-time=${RUN_TIME}s \
