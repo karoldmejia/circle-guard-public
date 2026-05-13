@@ -206,10 +206,9 @@ pipeline {
                     kubectl rollout status deployment/promotion-service -n stage --timeout=600s
                     
                     echo "Stage environment ready"
-                    
-                    # Trigger E2E pipeline
-                    build job: 'circle-guard-e2e-stage', wait: false, propagate: false
                 """
+                
+                build job: 'circle-guard-e2e-stage', wait: false, propagate: false
             }
         }
     }
