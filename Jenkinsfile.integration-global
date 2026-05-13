@@ -208,7 +208,7 @@ pipeline {
                     echo "Stage environment ready"
                 """
                 
-                build job: 'circle-guard-e2e-stage', wait: false, propagate: false
+                build job: 'circle-guard-stage', wait: false, propagate: false
             }
         }
     }
