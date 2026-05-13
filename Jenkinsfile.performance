@@ -17,87 +17,94 @@ pipeline {
         }
 
         stage('Run tests') {
-            steps {
-                sh """
-                    cd performance
-                    
-                    # Matar port-forwards previos
-                    pkill -f "kubectl port-forward" || true
-                    
-                    # Iniciar solo el port-forward necesario según TEST_TYPE
-                    case ${TEST_TYPE} in
-                        gateway)
-                            PORT=8087
-                            SERVICE=gateway-service
-                            LOCUST_CLASS=GatewayUser
-                            HOST=http://localhost:8087
-                            ;;
-                        login)
-                            PORT=8180
-                            SERVICE=auth-service
-                            LOCUST_CLASS=LoginUser
-                            HOST=http://localhost:8180
-                            ;;
-                        dashboard)
-                            PORT=8084
-                            SERVICE=dashboard-service
-                            LOCUST_CLASS=DashboardUser
-                            HOST=http://localhost:8084
-                            ;;
-                        propagation)
-                            PORT=8088
-                            SERVICE=promotion-service
-                            LOCUST_CLASS=PropagationUser
-                            HOST=http://localhost:8088
-                            ;;
-                        mixed)
-                            PORT=8087
-                            SERVICE=gateway-service
-                            LOCUST_CLASS=MixedLoadUser
-                            HOST=http://localhost:8087
-                            ;;
+    steps {
+        sh """
+            cd performance
+            
+            pkill -f "kubectl port-forward" || true
+            
+            case ${TEST_TYPE} in
+                gateway)
+                    PORT=8087
+                    SERVICE=gateway-service
+                    LOCUST_CLASS=GatewayUser
+                    HOST=http://localhost:8087
+                    EXTRA_PORTS=""
+                    ;;
+                login)
+                    PORT=8180
+                    SERVICE=auth-service
+                    LOCUST_CLASS=LoginUser
+                    HOST=http://localhost:8180
+                    EXTRA_PORTS=""
+                    ;;
+                dashboard)
+                    PORT=8084
+                    SERVICE=dashboard-service
+                    LOCUST_CLASS=DashboardUser
+                    HOST=http://localhost:8084
+                    # Dashboard necesita Auth para obtener token
+                    EXTRA_PORTS="8180"
+                    EXTRA_SERVICES="auth-service"
+                    ;;
+                propagation)
+                    PORT=8088
+                    SERVICE=promotion-service
+                    LOCUST_CLASS=PropagationUser
+                    HOST=http://localhost:8088
+                    # Propagation necesita Auth e Identity
+                    EXTRA_PORTS="8180 8083"
+                    EXTRA_SERVICES="auth-service identity-service"
+                    ;;
+                mixed)
+                    PORT=8087
+                    SERVICE=gateway-service
+                    LOCUST_CLASS=MixedLoadUser
+                    HOST=http://localhost:8087
+                    EXTRA_PORTS="8180 8084"
+                    EXTRA_SERVICES="auth-service dashboard-service"
+                    ;;
+            esac
+            
+            echo "Iniciando port-forward para \${SERVICE} en puerto \${PORT}..."
+            kubectl port-forward -n stage service/\${SERVICE} \${PORT}:\${PORT} > /dev/null 2>&1 &
+            PF_PID=\$!
+            
+            # Iniciar port-forwards adicionales si es necesario
+            if [ -n "\${EXTRA_PORTS}" ]; then
+                echo "Iniciando port-forwards adicionales para \${EXTRA_SERVICES}..."
+                for svc in \${EXTRA_SERVICES}; do
+                    case \$svc in
+                        auth-service) extra_port=8180 ;;
+                        identity-service) extra_port=8083 ;;
+                        dashboard-service) extra_port=8084 ;;
                     esac
-                    
-                    echo "Iniciando port-forward para \${SERVICE} en puerto \${PORT}..."
-                    kubectl port-forward -n stage service/\${SERVICE} \${PORT}:\${PORT} > /dev/null 2>&1 &
-                    PF_PID=\$!
-                    
-                    # Esperar a que el port-forward esté listo
-                    echo "Esperando port-forward..."
-                    for i in 1 2 3 4 5 6 7 8 9 10; do
-                        if curl -s http://localhost:\${PORT}/actuator/health > /dev/null 2>&1; then
-                            echo "✅ Servidor listo en puerto \${PORT}"
-                            break
-                        fi
-                        echo "⏳ Intentando \$i/10..."
-                        sleep 2
-                    done
-                    
-                    # Verificar que responde
-                    if ! curl -s http://localhost:\${PORT}/actuator/health > /dev/null 2>&1; then
-                        echo "No se pudo conectar al servicio en puerto \${PORT}"
-                        exit 1
-                    fi
-                    
-                    # Ejecutar Locust
-                    locust -f locustfile.py \${LOCUST_CLASS} \
-                        --host=\${HOST} \
-                        --users=${USERS} \
-                        --spawn-rate=${SPAWN_RATE} \
-                        --run-time=${RUN_TIME}s \
-                        --headless \
-                        --only-summary
-                    
-                    # Limpiar
-                    kill \$PF_PID 2>/dev/null || true
-                """
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'performance/*.html, performance/*.csv', allowEmptyArchive: true
-                }
-            }
-        }
+                    kubectl port-forward -n stage service/\$svc \${extra_port}:\${extra_port} > /dev/null 2>&1 &
+                    PF_PID="\$PF_PID \$!"
+                done
+            fi
+            
+            sleep 15
+            
+            # Verificar conectividad
+            if ! curl -s http://localhost:\${PORT}/actuator/health > /dev/null 2>&1; then
+                echo "No se pudo conectar al servicio en puerto \${PORT}"
+                exit 1
+            fi
+            
+            # Ejecutar Locust
+            locust -f locustfile.py \${LOCUST_CLASS} \
+                --host=\${HOST} \
+                --users=${USERS} \
+                --spawn-rate=${SPAWN_RATE} \
+                --run-time=${RUN_TIME}s \
+                --headless \
+                --only-summary
+            
+            kill \$PF_PID 2>/dev/null || true
+        """
+    }
+}
     }
 
     post {
