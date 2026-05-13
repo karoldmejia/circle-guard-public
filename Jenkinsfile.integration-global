@@ -60,6 +60,27 @@ pipeline {
             }
         }
 
+        stage('Create databases') {
+            when { branch 'develop' }
+            steps {
+                sh """
+                    echo "Creating databases in PostgreSQL..."
+                    
+                    # Esperar a que PostgreSQL esté listo
+                    kubectl wait --for=condition=ready pod -l app=postgres -n ${NAMESPACE} --timeout=120s
+                    
+                    # Crear bases de datos necesarias
+                    kubectl exec -n ${NAMESPACE} deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_identity;" || true
+                    kubectl exec -n ${NAMESPACE} deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_auth;" || true
+                    kubectl exec -n ${NAMESPACE} deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_promotion;" || true
+                    kubectl exec -n ${NAMESPACE} deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_dashboard;" || true
+                    kubectl exec -n ${NAMESPACE} deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_form;" || true
+                    
+                    echo "Databases created successfully"
+                """
+            }
+        }
+
         stage('Deploy Identity') {
             when { branch 'develop' }
             steps {
@@ -78,26 +99,6 @@ pipeline {
                     
                     # Limpiar
                     rm -rf /tmp/services-${NAMESPACE}
-                """
-            }
-        }
-
-        stage('Create Databases') {
-            when { branch 'develop' }
-            steps {
-                sh """
-                    echo "Creating databases in PostgreSQL..."
-                    
-                    # Esperar a que PostgreSQL esté listo
-                    kubectl wait --for=condition=ready pod -l app=postgres -n ${NAMESPACE} --timeout=120s
-                    
-                    # Crear bases de datos necesarias
-                    kubectl exec -n ${NAMESPACE} deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_auth;" || true
-                    kubectl exec -n ${NAMESPACE} deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_promotion;" || true
-                    kubectl exec -n ${NAMESPACE} deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_dashboard;" || true
-                    kubectl exec -n ${NAMESPACE} deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_form;" || true
-                    
-                    echo "Databases created successfully"
                 """
             }
         }
