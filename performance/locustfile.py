@@ -309,16 +309,10 @@ class MixedLoadUser(HttpUser):
     - Students arriving → generating and validating QR codes (50%)
     - New logins (20%)
     - Admins checking dashboard (30%)
-
-    Target: error rate < 0.1%, sustained for 5 minutes
     """
     wait_time = between(0.5, 2)
-    host = "http://localhost:8087"   # Primary: gateway
-
-    AUTH_HOST    = "http://localhost:8180"
-    GATEWAY_HOST = "http://localhost:8087"
-    DASH_HOST    = "http://localhost:8084"
-
+    host = "http://localhost:8087"  # Default host
+    
     def on_start(self):
         self.user_id = str(uuid.uuid4())
         self.qr_token = get_qr_token(self.user_id)
@@ -326,6 +320,7 @@ class MixedLoadUser(HttpUser):
 
     @task(5)
     def validate_qr(self):
+        # Usa el host por defecto (gateway)
         with self.client.post(
             f"{GATEWAY_BASE}/validate",
             json={"token": self.qr_token},
@@ -339,9 +334,9 @@ class MixedLoadUser(HttpUser):
 
     @task(2)
     def login(self):
+        # Para login, necesitas usar un cliente separado o cambiar el host
         with self.client.post(
             f"{AUTH_BASE}/login",
-            base_url=self.AUTH_HOST,
             json={"username": "student1", "password": "password123"},
             name="[mixed] /auth/login",
             catch_response=True
@@ -355,17 +350,18 @@ class MixedLoadUser(HttpUser):
     def dashboard(self):
         with self.client.get(
             f"{DASHBOARD_BASE}/health-board",
-            base_url=self.DASH_HOST,
             headers={"Authorization": f"Bearer {self.access_token}"},
             name="[mixed] /analytics/health-board",
             catch_response=True
         ) as resp:
-            if resp.status_code in (200, 401):
+            if resp.status_code == 200:
+                resp.success()
+            elif resp.status_code == 401:
+                self.access_token = get_access_token(str(uuid.uuid4()))
                 resp.success()
             else:
                 resp.failure(f"Status {resp.status_code}")
-
-
+                
 SLA_RULES = {
     "/gate/validate":           {"p95_ms": 50,   "error_pct": 0.1},
     "/analytics/health-board":  {"p95_ms": 500,  "error_pct": 1.0},
