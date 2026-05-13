@@ -18,6 +18,7 @@ spec:
       containers:
         - name: auth-service
           image: circleguard/auth-service:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 8180
           env:

@@ -1,0 +1,65 @@
+pipeline {
+    agent any
+
+    parameters {
+        choice(name: 'TEST_TYPE', choices: ['gateway', 'login', 'dashboard', 'propagation', 'mixed'], description: 'Tipo de prueba')
+        string(name: 'USERS', defaultValue: '100', description: 'Número de usuarios concurrentes')
+        string(name: 'SPAWN_RATE', defaultValue: '10', description: 'Tasa de generación de usuarios')
+        string(name: 'RUN_TIME', defaultValue: '120', description: 'Duración de la prueba (segundos)')
+    }
+
+    stages {
+        stage('Check Stage Environment') {
+            steps {
+                sh """
+                    echo "Verificando que stage está disponible..."
+                    kubectl get pods -n stage
+                """
+            }
+        }
+
+        stage('Install Locust') {
+            steps {
+                sh """
+                    pip3 install locust
+                """
+            }
+        }
+
+        stage('Run Performance Tests') {
+            steps {
+                sh """
+                    echo "Ejecutando pruebas de rendimiento en stage..."
+                    
+                    cd performance
+                    locust -f locustfile.py \
+                        --host=http://stage.circleguard.internal \
+                        --users=${params.USERS} \
+                        --spawn-rate=${params.SPAWN_RATE} \
+                        --run-time=${params.RUN_TIME}s \
+                        --headless \
+                        --only-summary \
+                        --html=perf-report-${params.TEST_TYPE}.html \
+                        ${params.TEST_TYPE.capitalize()}User
+                    
+                    echo "Pruebas completadas. Reporte generado."
+                """
+            }
+            post {
+                always {
+                    publishHTML([
+                        reportDir: 'performance',
+                        reportFiles: "perf-report-${params.TEST_TYPE}.html",
+                        reportName: 'Performance Test Report'
+                    ])
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}

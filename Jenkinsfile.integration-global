@@ -182,5 +182,9 @@ pipeline {
     }
 
     post {
+        always {
+            sh "kubectl delete ns ${NAMESPACE} || true"
+            cleanWs()
+        }
     }
 }

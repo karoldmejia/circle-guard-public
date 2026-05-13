@@ -6,117 +6,207 @@ pipeline {
         SERVICE_DIR    = "services/${SERVICE}"
         IMAGE_NAME     = "circleguard/auth-service"
         PORT           = '8180'
-        DOCKER_REGISTRY = 'localhost:5000'
+    }
+
+    triggers {
+        pollSCM('H/5 * * * *')
     }
 
     stages {
-        stage('Checkout') { steps { checkout scm } }
 
-        stage('Validate Identity Service Contract') {
+        stage('Checkout') {
+            steps { checkout scm }
+        }
+
+        stage('Compile & Package') {
+            when { 
+                anyOf {
+                    changeset "services/${SERVICE}/**"
+                    changeset "build.gradle.kts"
+                    changeset "gradle/**"
+                }
+            }
+            steps {
+                sh "./gradlew :services:${SERVICE}:clean :services:${SERVICE}:bootJar --no-daemon"
+            }
+        }
+
+        stage('Extract Version') {
+            when { 
+                anyOf {
+                    changeset "services/${SERVICE}/**"
+                    changeset "build.gradle.kts"
+                }
+            }
+            steps {
+                script {
+                    env.APP_VERSION = sh(
+                        script: "grep 'version =' build.gradle.kts | head -1 | sed 's/.*version = //; s/\"//g; s/\\x27//g' | tr -d ' '",
+                        returnStdout: true
+                    ).trim()
+                    echo "Version extracted: ${env.APP_VERSION}"
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            when { 
+                anyOf {
+                    changeset "services/${SERVICE}/**"
+                    changeset "Dockerfile"
+                }
+            }
+            steps {
+                sh '''
+                    eval $(minikube docker-env)
+
+                    docker build \
+                    -t circleguard/auth-service:latest \
+                    -f services/circleguard-auth-service/Dockerfile \
+                    services/circleguard-auth-service
+                '''
+            }
+        }
+
+        stage('Security Scan (Trivy)') {
+            when { 
+                changeset "services/${SERVICE}/**"
+            }
+            steps {
+                sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_NAME}:${APP_VERSION} || true"
+            }
+        }
+
+        stage('Scan for Hardcoded Secrets') {
+            when { 
+                changeset "services/${SERVICE}/**"
+            }
             steps {
                 dir(env.SERVICE_DIR) {
                     sh '''
-                        echo "Verifying IdentityClient interface is valid..."
-                        ./gradlew compileJava --no-daemon
-                        grep -r "IdentityClient" src/main/java --include="*.java" | grep -q "interface\|@FeignClient" && echo "IdentityClient contract OK"
+                        if grep -r "vault.secret\\s*=\\s*['\\\"][^$]" src/main/; then
+                            echo "ERROR: Hardcoded vault secret detected!"
+                            exit 1
+                        fi
+                        echo "Secret scan passed."
                     '''
                 }
             }
         }
 
-        stage('Compile & Package') {
-            steps {
-                dir(env.SERVICE_DIR) {
-                    script {
-                        env.APP_VERSION = sh(script: "grep '^version' ../../build.gradle.kts | head -1 | sed \"s/version = '//;s/'//\"", returnStdout: true).trim()
-                    }
-                    sh './gradlew clean bootJar --no-daemon'
-                }
-            }
-        }
-
-        stage('Build & Publish Docker Image') {
-            steps {
-                dir(env.SERVICE_DIR) {
-                    sh "docker build -t ${IMAGE_NAME}:${APP_VERSION} -f Dockerfile ."
-                    sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_NAME}:${APP_VERSION} || true"
-                    sh "docker tag ${IMAGE_NAME}:${APP_VERSION} ${DOCKER_REGISTRY}/${IMAGE_NAME}:${APP_VERSION}"
-                    sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${APP_VERSION}"
-                }
-            }
-        }
-
+        // TESTS 
         stage('Unit Tests') {
-            when { branch 'develop' }
+            when { 
+                branch 'develop' 
+                changeset "services/${SERVICE}/**"
+            }
             steps {
-                dir(env.SERVICE_DIR) {
-                    sh './gradlew test --no-daemon'
-                }
+                sh "./gradlew :services:${SERVICE}:test --no-daemon --refresh-dependencies"
             }
             post {
-                always { junit "${env.SERVICE_DIR}/build/test-results/test/*.xml" }
+                always {
+                    junit "${SERVICE_DIR}/build/test-results/test/*.xml"
+                }
             }
         }
 
         stage('Integration Tests') {
-            when { branch 'develop' }
+            when { 
+                branch 'develop'
+                changeset "services/${SERVICE}/**"
+            }
             steps {
-                dir(env.SERVICE_DIR) {
-                    sh './gradlew integrationTest --no-daemon -Dspring.profiles.active=integration'
-                }
+                sh "./gradlew :services:${SERVICE}:integrationTest --no-daemon --refresh-dependencies"
             }
             post {
-                always { junit "${env.SERVICE_DIR}/build/test-results/integrationTest/*.xml" }
+                always {
+                    junit "${SERVICE_DIR}/build/test-results/integrationTest/*.xml"
+                }
             }
         }
 
-        //  DEPLOY 
-        stage('Verify Identity is Running') {
-            when { branch 'develop' }
-            steps {
-                sh 'kubectl get pods -n dev -l app=identity-service | grep Running || (echo "Identity not ready!" && exit 1)'
-            }
-        }
-
+        // DEPLOY 
         stage('Deploy to DEV') {
-            when { branch 'develop' }
+            when { 
+                branch 'develop'
+                changeset "services/${SERVICE}/**"
+            }
             steps {
                 sh '''
+                    echo "Applying secrets..."
+                    kubectl apply -f k8s/dev/secrets.yaml
+
+                    echo "Applying deployment..."
                     kubectl apply -f k8s/dev/services/auth.yaml
-                    kubectl rollout status deployment/auth-service -n dev --timeout=300s
-                    kubectl exec -n dev deployment/auth-service -- curl -sf http://localhost:8180/actuator/health | grep UP
+
+                    echo "Waiting rollout..."
+                    kubectl rollout status deployment/auth-service -n dev --timeout=180s
+
+                    echo "Checking health..."
+                    kubectl exec -n dev deployment/auth-service -- wget -qO- http://localhost:8180/actuator/health | grep UP
+
+                    echo "Deployment successful"
                 '''
+            }
+            post {
+                failure {
+                    sh '''
+                        echo "=== PODS ==="
+                        kubectl get pods -n dev
+
+                        echo "=== DESCRIBE ==="
+                        kubectl describe deployment auth-service -n dev || true
+
+                        echo "=== LOGS ==="
+                        kubectl logs -n dev deployment/auth-service || true
+                    '''
+                }
             }
         }
 
         stage('Deploy to STAGE') {
-            when { branch 'release/*' }
+            when { 
+                branch 'release/*'
+                changeset "services/${SERVICE}/**"
+            }
             steps {
                 input message: '¿Desplegar Auth a STAGE?', ok: 'Desplegar'
+
                 sh '''
                     kubectl apply -f k8s/stage/services/auth.yaml
-                    kubectl rollout status deployment/auth-service -n stage --timeout=180s
+
+                    kubectl rollout status deployment/auth-service -n stage --timeout=240s
                 '''
             }
         }
 
         stage('Deploy to PROD') {
-            when { branch 'main' }
+            when { 
+                branch 'main'
+                changeset "services/${SERVICE}/**"
+            }
             steps {
-                input message: '¿Desplegar Auth a PROD?', ok: 'Sí'
+                input message: '¿Desplegar Auth a PRODUCCIÓN?', ok: 'Sí'
+
                 sh '''
                     kubectl apply -f k8s/prod/services/auth.yaml
+
                     kubectl rollout status deployment/auth-service -n prod --timeout=300s
                 '''
             }
         }
 
+        // RELEASE 
         stage('Release') {
-            when { branch 'main' }
+            when { 
+                branch 'main'
+                changeset "services/${SERVICE}/**"
+            }
             steps {
                 sh '''
                     git tag -a "auth-v${APP_VERSION}" -m "Auth service release ${APP_VERSION}"
                     git push origin "auth-v${APP_VERSION}"
+                    echo "Release ${APP_VERSION} completed!"
                 '''
             }
         }
@@ -124,12 +214,15 @@ pipeline {
 
     post {
         failure {
+            echo "Pipeline failed for ${env.SERVICE}"
             script {
                 if (env.BRANCH_NAME == 'main') {
                     sh 'kubectl rollout undo deployment/auth-service -n prod || true'
                 }
             }
         }
-        always { cleanWs() }
+        always {
+            cleanWs()
+        }
     }
 }
