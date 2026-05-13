@@ -207,7 +207,7 @@ class PropagationUser(HttpUser):
     weight = 1
 
     def on_start(self):
-        self.hc_token = get_access_token("healthcenter-user", ["HEALTH_CENTER"])
+        self.hc_token = get_access_token("healthcenter-user", ["ROLE_HEALTH_CENTER"])
         self.target_user = "e2e.confirmed.student@university.edu"
     
     @task(1)
@@ -240,7 +240,7 @@ class PropagationUser(HttpUser):
                 else:
                     resp.success()
             elif resp.status_code == 403:
-                resp.failure("Forbidden - Token lacks HEALTH_CENTER permission")
+                resp.failure("Forbidden - Token lacks ROLE_HEALTH_CENTER")
             else:
                 resp.failure(f"Status {resp.status_code}")
                 
