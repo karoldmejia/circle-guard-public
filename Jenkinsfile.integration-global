@@ -148,6 +148,41 @@ pipeline {
                 """
             }
         }
+
+        stage('Deploy to STAGE (if release branch)') {
+            when { branch 'release/*' }
+            steps {
+                sh """
+                    echo "Deploying to STAGE namespace..."
+                    
+                    # Aplicar secrets a stage
+                    kubectl apply -f k8s/dev/secrets-no-namespace.yaml -n stage || true
+                    
+                    # Desplegar infraestructura a stage
+                    for file in k8s/dev/infrastructure/*.yaml; do
+                        grep -v "namespace: dev" \$file | kubectl apply -f - -n stage || true
+                    done
+                    
+                    # Crear bases de datos
+                    kubectl exec -n stage deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_identity;" || true
+                    kubectl exec -n stage deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_auth;" || true
+                    kubectl exec -n stage deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_promotion;" || true
+                    kubectl exec -n stage deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_dashboard;" || true
+                    
+                    # Desplegar servicios a stage
+                    for service in identity auth promotion gateway dashboard notification; do
+                        grep -v "namespace: dev" k8s/dev/services/\${service}.yaml | kubectl apply -f - -n stage
+                    done
+                    
+                    # Esperar a que todo esté listo
+                    for service in identity auth promotion gateway dashboard notification; do
+                        kubectl rollout status deployment/\${service}-service -n stage --timeout=300s
+                    done
+                    
+                    echo "Stage environment ready"
+                """
+            }
+        }
     }
 
     post {
