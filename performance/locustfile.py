@@ -198,18 +198,21 @@ class DashboardUser(HttpUser):
 # Scenario 4: Promotion
 # Target: propagation completes < 60 seconds for full graph traversal
 class PropagationUser(HttpUser):
-    """
-    Simulates health center reporting positive cases.
-    Uses pre-generated JWT token to avoid auth calls.
-    """
     wait_time = between(30, 60)
     host = "http://localhost:8088"
     weight = 1
 
     def on_start(self):
-        self.hc_token = get_access_token("healthcenter-user", ["ROLE_HEALTH_CENTER"])
+        response = self.client.post(
+            "http://localhost:8180/api/v1/auth/login",
+            json={"username": "admin1", "password": "admin123"}
+        )
+        if response.status_code == 200:
+            self.hc_token = response.json().get("token")
+        else:
+            self.hc_token = None
         self.target_user = "e2e.confirmed.student@university.edu"
-    
+        
     @task(1)
     def report_positive(self):
         with self.client.post(
