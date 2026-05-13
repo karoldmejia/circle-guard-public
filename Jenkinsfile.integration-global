@@ -33,16 +33,19 @@ pipeline {
             when { branch 'develop' }
             steps {
                 sh """
-                    echo "Deploying minimal infrastructure to namespace ${NAMESPACE}..."
+                    echo "Deploying infrastructure to namespace ${NAMESPACE}..."
                     
-                    # Solo desplegar lo esencial (sin Kafka, sin Neo4j)
-                    for file in postgres.yaml openldap.yaml redis.yaml; do
+                    # Desplegar PostgreSQL, Redis, OpenLDAP y Neo4j
+                    for file in postgres.yaml openldap.yaml redis.yaml neo4j.yaml; do
                         echo "Processing \$file"
                         grep -v "namespace: dev" k8s/dev/infrastructure/\$file | kubectl apply -f - -n ${NAMESPACE} || true
                     done
                     
                     echo "Waiting for PostgreSQL to be ready..."
                     kubectl wait --for=condition=ready pod -l app=postgres -n ${NAMESPACE} --timeout=180s
+                    
+                    echo "Waiting for Neo4j to be ready..."
+                    kubectl wait --for=condition=ready pod -l app=neo4j -n ${NAMESPACE} --timeout=300s
                     
                     echo "Infrastructure ready"
                     kubectl get pods -n ${NAMESPACE}
@@ -103,7 +106,9 @@ pipeline {
                     kubectl set resources deployment promotion-service -n ${NAMESPACE} \\
                         --limits=cpu=200m,memory=512Mi \\
                         --requests=cpu=50m,memory=128Mi
-                    
+                    kubectl set resources deployment neo4j -n ${NAMESPACE} \\
+                        --limits=cpu=500m,memory=1Gi \\
+                        --requests=cpu=200m,memory=512Mi
                     # Deshabilitar todo lo que no sea estrictamente necesario
                     kubectl set env deployment/promotion-service -n ${NAMESPACE} SPRING_KAFKA_ENABLED=false
                     kubectl set env deployment/promotion-service -n ${NAMESPACE} SPRING_DATA_REDIS_ENABLED=false
