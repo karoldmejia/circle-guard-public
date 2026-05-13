@@ -1,10 +1,5 @@
 pipeline {
-    agent {
-        docker {
-            image 'alpine/k8s:1.28.0'
-            args '-v /var/run/docker.sock:/var/run/docker.sock'
-        }
-    }
+    agent any
 
     parameters {
         choice(name: 'TEST_TYPE', choices: ['gateway', 'login', 'dashboard', 'propagation', 'mixed'])
@@ -14,15 +9,6 @@ pipeline {
     }
 
     stages {
-
-        stage('Install locust') {
-            steps {
-                sh """
-                    apk add --no-cache python3 py3-pip
-                    pip3 install locust --break-system-packages
-                """
-            }
-        }
 
         stage('Check stage') {
             steps {
@@ -35,15 +21,11 @@ pipeline {
                 sh """
                     cd performance
                     
-                    # Port-forwards para todos los servicios
+                    # Port-forwards
                     kubectl port-forward -n stage service/gateway-service 8087:8087 > /dev/null 2>&1 &
-                    PF1=\$!
                     kubectl port-forward -n stage service/auth-service 8180:8180 > /dev/null 2>&1 &
-                    PF2=\$!
                     kubectl port-forward -n stage service/dashboard-service 8084:8084 > /dev/null 2>&1 &
-                    PF3=\$!
                     kubectl port-forward -n stage service/promotion-service 8088:8088 > /dev/null 2>&1 &
-                    PF4=\$!
                     
                     sleep 10
                     
@@ -55,16 +37,11 @@ pipeline {
                         --headless \
                         --only-summary
                     
-                    kill \$PF1 \$PF2 \$PF3 \$PF4 2>/dev/null || true
+                    kill %1 %2 %3 %4 2>/dev/null || true
                 """
             }
             post {
                 always {
-                    // Archivar resultados si hay
-                    sh """
-                        cd performance
-                        ls -la *.csv *.html 2>/dev/null || true
-                    """
                     archiveArtifacts artifacts: 'performance/*.html, performance/*.csv', allowEmptyArchive: true
                 }
             }
