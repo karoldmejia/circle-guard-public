@@ -178,22 +178,26 @@ class DashboardUser(HttpUser):
     weight = 3
 
     def on_start(self):
-        response = self.client.post(
-            "/api/v1/auth/login",
+        import requests
+        auth_response = requests.post(
+            "http://localhost:8180/api/v1/auth/login",
             json={"username": "admin1", "password": "admin123"}
         )
-        if response.status_code == 200:
-            self.admin_token = response.json().get("token")
+        if auth_response.status_code == 200:
+            self.admin_token = auth_response.json().get("token")
+            print(f"DashboardUser: Token obtenido")
         else:
             self.admin_token = None
+            print(f"DashboardUser: No se pudo obtener token")
 
     @task(5)
     def health_board(self):
         if not self.admin_token:
             return
         with self.client.get(
-            "/api/v1/analytics/health-board",  # ← Ruta correcta
+            "/api/v1/analytics/health-board",
             headers={"Authorization": f"Bearer {self.admin_token}"},
+            name="/analytics/health-board",
             catch_response=True
         ) as resp:
             if resp.status_code == 200:
