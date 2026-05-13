@@ -46,7 +46,7 @@ def build_jwt(subject: str, secret: str, permissions: list = None, expiry_second
         "exp": now + expiry_seconds,
     }
     if permissions:
-        payload_data["roles"] = permissions
+        payload_data["authorities"] = permissions
     
     payload = _b64url_encode(json.dumps(payload_data).encode())
     signing_input = f"{header}.{payload}".encode()
