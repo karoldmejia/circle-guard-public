@@ -107,16 +107,7 @@ pipeline {
                     echo "Deploying Promotion service with reduced resources..."
                     
                     grep -v "namespace: dev" k8s/dev/services/promotion.yaml | kubectl apply -f - -n ${NAMESPACE}
-                    
-                    # Recursos aún más reducidos
-                    kubectl set resources deployment promotion-service -n ${NAMESPACE} \\
-                        --limits=cpu=200m,memory=512Mi \\
-                        --requests=cpu=50m,memory=128Mi
-                    kubectl set resources deployment neo4j -n ${NAMESPACE} \\
-                        --limits=cpu=500m,memory=1Gi \\
-                        --requests=cpu=200m,memory=512Mi
-                    
-                    # Aumentar timeout
+
                     kubectl rollout status deployment/promotion-service -n ${NAMESPACE} --timeout=600s
                 """
             }
