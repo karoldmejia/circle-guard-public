@@ -211,13 +211,7 @@ pipeline {
 
     post {
         always {
-            script {
-                try {
-                    sh "kubectl delete ns ${NAMESPACE} --ignore-not-found=true --wait=true --timeout=60s || true"
-                } catch (Exception e) {
-                    echo "Failed to delete namespace: ${e.getMessage()}"
-                }
-            }
+            sh "kubectl delete ns ${NAMESPACE} || true"
             cleanWs()
         }
     }
