@@ -32,7 +32,7 @@ pipeline {
         stage('Build All Images') {
             when { branch 'develop' }
             steps {
-                sh """
+                sh '''
                     echo "Building all images..."
                     eval $(minikube docker-env)
                     
@@ -41,7 +41,7 @@ pipeline {
                             -f services/circleguard-\${service}-service/Dockerfile \
                             services/circleguard-\${service}-service/ || true
                     done
-                """
+                '''
             }
         }
 
