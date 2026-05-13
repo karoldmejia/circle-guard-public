@@ -20,7 +20,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
-
+import org.springframework.test.context.TestPropertySource;
 
 /**
  * Integration test: full login flow against real PostgreSQL.
@@ -36,6 +36,13 @@ import org.junit.jupiter.api.TestInstance.Lifecycle;
 @ActiveProfiles("integration")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @TestInstance(Lifecycle.PER_CLASS) 
+@TestPropertySource(properties = {
+    "jwt.secret=my-super-secret-dev-key-32-chars-long-12345678",
+    "qr.secret=my-qr-secret-key-for-dev-1234567890",
+    "spring.flyway.enabled=false",
+    "spring.jpa.hibernate.ddl-auto=create-drop",
+    "spring.security.enabled=false"
+})
 class LoginFlowIntegrationTest {
 
     @Container
