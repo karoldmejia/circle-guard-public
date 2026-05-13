@@ -47,13 +47,15 @@ def build_jwt(subject: str, secret: str, permissions: list = None, expiry_second
         "exp": now + expiry_seconds,
     }
     if permissions:
-        payload_data["permissions"] = permissions
+        # Probar con diferentes nombres de claim
+        payload_data["authorities"] = permissions  # ← Cambiar "permissions" a "authorities"
+        # payload_data["roles"] = permissions     # ← O "roles"
+        # payload_data["scope"] = permissions     # ← O "scope"
     
     payload = _b64url_encode(json.dumps(payload_data).encode())
     signing_input = f"{header}.{payload}".encode()
     signature = hmac.new(secret.encode(), signing_input, hashlib.sha256).digest()
     return f"{header}.{payload}.{_b64url_encode(signature)}"
-
 
 def get_qr_token(user_id: str = None) -> str:
     user_id = user_id or str(uuid.uuid4())
