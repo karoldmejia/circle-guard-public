@@ -36,9 +36,9 @@ spec:
             - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
               value: "true"
           readinessProbe:
-            exec:
-              command: ["kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
-            initialDelaySeconds: 30
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 40
             periodSeconds: 10
           resources:
             requests:

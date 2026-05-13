@@ -35,17 +35,23 @@ pipeline {
                 sh """
                     echo "Deploying infrastructure to namespace ${NAMESPACE}..."
                     
-                    # Desplegar PostgreSQL, Redis, OpenLDAP y Neo4j
-                    for file in postgres.yaml openldap.yaml redis.yaml neo4j.yaml; do
+                    # Deploy infrastructure
+                    for file in postgres.yaml openldap.yaml redis.yaml neo4j.yaml zookeeper.yaml kafka.yaml; do
                         echo "Processing \$file"
-                        grep -v "namespace: dev" k8s/dev/infrastructure/\$file | kubectl apply -f - -n ${NAMESPACE} || true
+                        grep -v "namespace: dev" k8s/dev/infrastructure/\$file | kubectl apply -f - -n ${NAMESPACE}
                     done
                     
-                    echo "Waiting for PostgreSQL to be ready..."
+                    echo "Waiting for PostgreSQL..."
                     kubectl wait --for=condition=ready pod -l app=postgres -n ${NAMESPACE} --timeout=180s
                     
-                    echo "Waiting for Neo4j to be ready..."
+                    echo "Waiting for Neo4j..."
                     kubectl wait --for=condition=ready pod -l app=neo4j -n ${NAMESPACE} --timeout=300s
+                    
+                    echo "Waiting for Zookeeper..."
+                    kubectl wait --for=condition=ready pod -l app=zookeeper -n ${NAMESPACE} --timeout=180s
+                    
+                    echo "Waiting for Kafka..."
+                    kubectl wait --for=condition=ready pod -l app=kafka -n ${NAMESPACE} --timeout=300s
                     
                     echo "Infrastructure ready"
                     kubectl get pods -n ${NAMESPACE}
@@ -109,8 +115,6 @@ pipeline {
                     kubectl set resources deployment neo4j -n ${NAMESPACE} \\
                         --limits=cpu=500m,memory=1Gi \\
                         --requests=cpu=200m,memory=512Mi
-                    # Deshabilitar todo lo que no sea estrictamente necesario
-                    kubectl set env deployment/promotion-service -n ${NAMESPACE} SPRING_KAFKA_ENABLED=false
                     
                     # Aumentar timeout
                     kubectl rollout status deployment/promotion-service -n ${NAMESPACE} --timeout=600s
