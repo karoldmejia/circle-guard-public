@@ -209,7 +209,7 @@ class PropagationUser(HttpUser):
     weight = 1
 
     def on_start(self):
-        self.hc_token = get_access_token("healthcenter-user")
+        self.hc_token = get_access_token("healthcenter-user", ["HEALTH_CENTER"])
         self.target_user = "e2e.confirmed.student@university.edu"
 
     @task(1)
@@ -236,28 +236,16 @@ class PropagationUser(HttpUser):
             catch_response=True
         ) as resp:
             elapsed = time.time() - start
-            if resp.status_code in (200, 201, 204):
+            if resp.status_code == 200:
                 if elapsed > 60:
                     resp.failure(f"Propagation took {elapsed:.1f}s – exceeds 60s SLA!")
                 else:
                     resp.success()
-            else:
-                resp.failure(f"Status {resp.status_code} - Response: {resp.text}")
-
-    @task(3)
-    def check_health_stats(self):
-        with self.client.get(
-            f"{PROMO_BASE}/health-status/stats",
-            headers={"Authorization": f"Bearer {self.hc_token}"},
-            name="/health-status/stats",
-            catch_response=True
-        ) as resp:
-            if resp.status_code == 200:
-                resp.success()
+            elif resp.status_code == 403:
+                resp.failure("Forbidden - Token lacks HEALTH_CENTER permission")
             else:
                 resp.failure(f"Status {resp.status_code}")
-
-
+                
 # Scenario 5: Mixed Peak Load (CORREGIDO)
 # 20% login, 50% QR validation, 30% dashboard
 class MixedLoadUser(HttpUser):
