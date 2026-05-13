@@ -29,6 +29,22 @@ pipeline {
             }
         }
 
+        stage('Build All Images') {
+            when { branch 'develop' }
+            steps {
+                sh """
+                    echo "Building all images..."
+                    eval $(minikube docker-env)
+                    
+                    for service in identity auth promotion gateway dashboard notification; do
+                        docker build -t circleguard/\${service}-service:latest \
+                            -f services/circleguard-\${service}-service/Dockerfile \
+                            services/circleguard-\${service}-service/ || true
+                    done
+                """
+            }
+        }
+
         stage('Deploy infrastructure') {
             when { branch 'develop' }
             steps {
