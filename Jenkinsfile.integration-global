@@ -111,8 +111,6 @@ pipeline {
                         --requests=cpu=200m,memory=512Mi
                     # Deshabilitar todo lo que no sea estrictamente necesario
                     kubectl set env deployment/promotion-service -n ${NAMESPACE} SPRING_KAFKA_ENABLED=false
-                    kubectl set env deployment/promotion-service -n ${NAMESPACE} SPRING_DATA_REDIS_ENABLED=false
-                    kubectl set env deployment/promotion-service -n ${NAMESPACE} SPRING_NEO4J_ENABLED=false
                     
                     # Aumentar timeout
                     kubectl rollout status deployment/promotion-service -n ${NAMESPACE} --timeout=600s
