@@ -84,9 +84,14 @@ class GatewayUser(HttpUser):
     weight = 5
 
     def on_start(self):
-        # Pick a random pre-seeded user (mostly healthy, some blocked)
-        self.user_id = TEST_USER_IDS[hash(self.environment.runner.user_count) % len(TEST_USER_IDS)]
-        self.qr_token = get_qr_token(self.user_id)
+        response = self.client.post(
+            "http://localhost:8180/api/v1/auth/login",
+            json={"username": "super_admin", "password": "password"}
+        )
+        if response.status_code == 200:
+            self.hc_token = response.json().get("token")
+        else:
+            self.hc_token = None
 
     @task(10)
     def validate_qr_token(self):
