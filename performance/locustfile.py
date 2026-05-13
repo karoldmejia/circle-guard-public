@@ -37,32 +37,36 @@ def _b64url_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
 
-def build_jwt(subject: str, secret: str, expiry_seconds: int = 300) -> str:
-    """Build a minimal HS256 JWT for testing (avoids hitting auth service in perf tests)."""
+def build_jwt(subject: str, secret: str, permissions: list = None, expiry_seconds: int = 3600) -> str:
+    """Build a minimal HS256 JWT for testing."""
     header = _b64url_encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
     now = int(time.time())
-    payload = _b64url_encode(json.dumps({
+    payload_data = {
         "sub": subject,
         "iat": now,
         "exp": now + expiry_seconds,
-        "permissions": ["ROLE_STUDENT"]
-    }).encode())
+    }
+    if permissions:
+        payload_data["permissions"] = permissions
+    
+    payload = _b64url_encode(json.dumps(payload_data).encode())
     signing_input = f"{header}.{payload}".encode()
     signature = hmac.new(secret.encode(), signing_input, hashlib.sha256).digest()
     return f"{header}.{payload}.{_b64url_encode(signature)}"
 
 
 def get_qr_token(user_id: str = None) -> str:
-    """Return a cached QR token (pre-built for performance tests)."""
     user_id = user_id or str(uuid.uuid4())
     if user_id not in _cached_tokens:
-        _cached_tokens[user_id] = build_jwt(user_id, QR_SECRET, expiry_seconds=3600)
+        _cached_tokens[user_id] = build_jwt(user_id, QR_SECRET, ["ROLE_STUDENT"], expiry_seconds=3600)
     return _cached_tokens[user_id]
 
 
-def get_access_token(user_id: str = None) -> str:
+def get_access_token(user_id: str = None, permissions: list = None) -> str:
     user_id = user_id or str(uuid.uuid4())
-    return build_jwt(user_id, JWT_SECRET, expiry_seconds=3600)
+    if permissions is None:
+        permissions = ["ROLE_STUDENT"]
+    return build_jwt(user_id, JWT_SECRET, permissions, expiry_seconds=3600)
 
 
 # Pre-seed 1000 user IDs for realistic load
