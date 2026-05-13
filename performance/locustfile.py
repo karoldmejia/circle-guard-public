@@ -90,6 +90,9 @@ class GatewayUser(HttpUser):
         )
         if response.status_code == 200:
             self.hc_token = response.json().get("token")
+            parts = self.hc_token.split('.')
+            payload = base64.b64decode(parts[1] + '==')
+            print(f"Token payload: {json.loads(payload)}")
         else:
             self.hc_token = None
 
