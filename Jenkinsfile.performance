@@ -16,6 +16,12 @@ pipeline {
             }
         }
 
+        stage('Install Locust') {
+            steps {
+                sh "pip3 install --user locust"
+            }
+        }
+
         stage('Run Tests') {
             steps {
                 sh """
