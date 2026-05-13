@@ -14,13 +14,13 @@ pipeline {
 
     stages {
 
-        stage('Check Stage') {
+        stage('Check stage') {
             steps {
                 sh "kubectl get pods -n stage"
             }
         }
 
-        stage('Run Tests') {
+        stage('Run tests') {
             steps {
                 sh """
                     cd performance
