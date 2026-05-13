@@ -31,13 +31,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Testcontainers
 @ActiveProfiles("integration")
-@TestPropertySource(properties = {
-    "jwt.secret=my-super-secret-dev-key-32-chars-long-12345678",
-    "qr.secret=my-qr-secret-key-for-dev-1234567890",
-    "spring.flyway.enabled=false",
-    "spring.jpa.hibernate.ddl-auto=create-drop",
-    "spring.security.enabled=false"
-})
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class LoginFlowIntegrationTest {
 
