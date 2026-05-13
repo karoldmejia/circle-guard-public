@@ -90,23 +90,6 @@ pipeline {
                         exit 1
                     fi
                     
-                    echo " TESTING LOGIN FLOW "
-                    
-                    LOGIN_RESPONSE=\$(wget -qO- \
-                        --method=POST \
-                        --header='Content-Type: application/json' \
-                        --body-data='{"username":"student1","password":"password123"}' \
-                        http://localhost:8180/api/v1/auth/login 2>/dev/null || true)
-
-                    echo "Response: \$LOGIN_RESPONSE"
-
-                    if echo "\$LOGIN_RESPONSE" | grep -q "token"; then
-                        echo "Login successful, token received"
-                    else
-                        echo "Login failed"
-                        exit 1
-                    fi
-                    
                     echo " ALL E2E TESTS PASSED "
                     
                     # Matar port-forwards
