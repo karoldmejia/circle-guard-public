@@ -29,7 +29,7 @@ pipeline {
             }
         }
 
-        stage('Deploy Minimal Infrastructure') {
+        stage('Deploy infrastructure') {
             when { branch 'develop' }
             steps {
                 sh """
@@ -97,19 +97,20 @@ pipeline {
                 sh """
                     echo "Deploying Promotion service with reduced resources..."
                     
-                    # Aplicar promotion con recursos reducidos
                     grep -v "namespace: dev" k8s/dev/services/promotion.yaml | kubectl apply -f - -n ${NAMESPACE}
                     
-                    # Reducir recursos de promotion al mínimo
+                    # Recursos aún más reducidos
                     kubectl set resources deployment promotion-service -n ${NAMESPACE} \\
-                        --limits=cpu=500m,memory=1Gi \\
-                        --requests=cpu=100m,memory=256Mi
+                        --limits=cpu=200m,memory=512Mi \\
+                        --requests=cpu=50m,memory=128Mi
                     
-                    # Deshabilitar Kafka y Redis si no son necesarios para pruebas básicas
+                    # Deshabilitar todo lo que no sea estrictamente necesario
                     kubectl set env deployment/promotion-service -n ${NAMESPACE} SPRING_KAFKA_ENABLED=false
                     kubectl set env deployment/promotion-service -n ${NAMESPACE} SPRING_DATA_REDIS_ENABLED=false
+                    kubectl set env deployment/promotion-service -n ${NAMESPACE} SPRING_NEO4J_ENABLED=false
                     
-                    kubectl rollout status deployment/promotion-service -n ${NAMESPACE} --timeout=300s
+                    # Aumentar timeout
+                    kubectl rollout status deployment/promotion-service -n ${NAMESPACE} --timeout=600s
                 """
             }
         }
