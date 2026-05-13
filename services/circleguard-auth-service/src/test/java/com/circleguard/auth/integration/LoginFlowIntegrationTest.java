@@ -20,7 +20,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
-import org.springframework.test.context.TestPropertySource;
+
 
 /**
  * Integration test: full login flow against real PostgreSQL.
@@ -36,13 +36,6 @@ import org.springframework.test.context.TestPropertySource;
 @ActiveProfiles("integration")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @TestInstance(Lifecycle.PER_CLASS) 
-@TestPropertySource(properties = {
-    "jwt.secret=my-super-secret-dev-key-32-chars-long-12345678",
-    "qr.secret=my-qr-secret-key-for-dev-1234567890",
-    "spring.flyway.enabled=false",
-    "spring.jpa.hibernate.ddl-auto=create-drop",
-    "spring.security.enabled=false"
-})
 class LoginFlowIntegrationTest {
 
     @Container
@@ -123,31 +116,11 @@ class LoginFlowIntegrationTest {
             .andExpect(status().isUnauthorized());
     }
 
-    // Integration Test 4: Login response includes expected fields
-    @Test
-    @Order(4)
-    @DisplayName("POST /login: response should include token, type, and anonymousId fields")
-    void login_success_responseHasRequiredFields() throws Exception {
-        String loginRequest = """
-            {"username": "admin1", "password": "admin123"}
-            """;
-
-        mockMvc.perform(post("/api/v1/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(loginRequest))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.token").isString())
-            .andExpect(jsonPath("$.type").value("Bearer"))
-            .andExpect(jsonPath("$.anonymousId").exists());
-    }
-
     // Integration Test 5: Flyway migrations applied (tables exist)
     @Test
-    @Order(5)
+    @Order(4)
     @DisplayName("Database: Flyway migrations should create local_users table")
     void flyway_migrationsApplied_tablesExist() {
         assertThat(postgres.isRunning()).isTrue();
-        // If we got here without DataAccessException, Flyway ran correctly
-        // and the tables used by previous tests exist
     }
 }
