@@ -36,17 +36,6 @@ _cached_tokens: dict = {}
 def _b64url_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
-def decode_token(token: str):
-    """Decodifica un JWT para ver su contenido (solo para debug)."""
-    parts = token.split('.')
-    if len(parts) != 3:
-        return None
-    payload = parts[1]
-    # Añadir padding si es necesario
-    payload += '=' * (4 - len(payload) % 4)
-    decoded = base64.b64decode(payload)
-    return json.loads(decoded)
-
 def build_jwt(subject: str, secret: str, permissions: list = None, expiry_seconds: int = 3600) -> str:
     """Build a minimal HS256 JWT for testing."""
     header = _b64url_encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
@@ -57,10 +46,7 @@ def build_jwt(subject: str, secret: str, permissions: list = None, expiry_second
         "exp": now + expiry_seconds,
     }
     if permissions:
-        # Probar con diferentes nombres de claim
-        payload_data["authorities"] = permissions  # ← Cambiar "permissions" a "authorities"
-        # payload_data["roles"] = permissions     # ← O "roles"
-        # payload_data["scope"] = permissions     # ← O "scope"
+        payload_data["roles"] = permissions
     
     payload = _b64url_encode(json.dumps(payload_data).encode())
     signing_input = f"{header}.{payload}".encode()
@@ -222,9 +208,6 @@ class PropagationUser(HttpUser):
 
     def on_start(self):
         self.hc_token = get_access_token("healthcenter-user", ["HEALTH_CENTER"])
-        # Debug: imprimir el contenido del token
-        token_data = decode_token(self.hc_token)
-        print(f"Token payload: {token_data}")
         self.target_user = "e2e.confirmed.student@university.edu"
     
     @task(1)
