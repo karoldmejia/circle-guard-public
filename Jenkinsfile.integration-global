@@ -20,11 +20,6 @@ pipeline {
             steps {
                 sh """
                 kubectl create ns ${NAMESPACE} || true
-                apply_to_namespace() {
-                            local file=\$1
-                            local ns=\$2
-                            grep -v "namespace:" "\$file" | kubectl apply -f - -n "\$ns"
-                        }
                 """
                 
             }
@@ -119,7 +114,6 @@ pipeline {
                         sh """
                         echo "Deploying Auth service to namespace ${NAMESPACE}..."
                         
-                        # Función para aplicar YAML sin namespace fijo
                         apply_to_namespace() {
                             local file=\$1
                             local ns=\$2
@@ -128,7 +122,6 @@ pipeline {
                         
                         apply_to_namespace k8s/dev/services/auth.yaml ${NAMESPACE}
                         
-                        # Deshabilitar LDAP
                         kubectl set env deployment/auth-service -n ${NAMESPACE} SPRING_LDAP_ENABLED=false
                         kubectl set env deployment/auth-service -n ${NAMESPACE} MANAGEMENT_HEALTH_LDAP_ENABLED=false
                         
@@ -140,6 +133,12 @@ pipeline {
                     steps {
                         sh """
                             echo "Deploying Promotion service to namespace ${NAMESPACE}..."
+
+                            apply_to_namespace() {
+                                local file=\$1
+                                local ns=\$2
+                                grep -v "namespace:" "\$file" | kubectl apply -f - -n "\$ns"
+                            }
                             
                             apply_to_namespace k8s/dev/services/promotion.yaml ${NAMESPACE}
 
