@@ -205,14 +205,15 @@ class PropagationUser(HttpUser):
     def on_start(self):
         response = self.client.post(
             "http://localhost:8180/api/v1/auth/login",
-            json={"username": "admin1", "password": "admin123"}
+            json={"username": "health_user", "password": "password"}
         )
         if response.status_code == 200:
             self.hc_token = response.json().get("token")
+            print(f"Token obtenido para health_user")
         else:
             self.hc_token = None
+            print(f"Error: {response.status_code}")
         self.target_user = "e2e.confirmed.student@university.edu"
-        
     @task(1)
     def report_positive(self):
         with self.client.post(
