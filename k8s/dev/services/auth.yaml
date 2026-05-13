@@ -48,7 +48,11 @@ spec:
             - name: IDENTITY_SERVICE_URL
               value: "http://identity-service:8083"
             - name: SPRING_LDAP_URLS
-              value: "ldap://openldap-service:389" 
+              value: "ldap://openldap-service:389"
+            - name: SPRING_LDAP_ENABLED
+              value: "false"
+            - name: MANAGEMENT_HEALTH_LDAP_ENABLED
+              value: "false"
           readinessProbe:
             httpGet:
               path: /actuator/health
