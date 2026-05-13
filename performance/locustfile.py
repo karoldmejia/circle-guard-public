@@ -178,22 +178,10 @@ class DashboardUser(HttpUser):
     weight = 3
 
     def on_start(self):
-        import requests
-        auth_response = requests.post(
-            "http://localhost:8180/api/v1/auth/login",
-            json={"username": "admin1", "password": "admin123"}
-        )
-        if auth_response.status_code == 200:
-            self.admin_token = auth_response.json().get("token")
-            print(f"DashboardUser: Token obtenido")
-        else:
-            self.admin_token = None
-            print(f"DashboardUser: No se pudo obtener token")
+        self.admin_token = get_access_token("admin-user")
 
     @task(5)
     def health_board(self):
-        if not self.admin_token:
-            return
         with self.client.get(
             "/api/v1/analytics/health-board",
             headers={"Authorization": f"Bearer {self.admin_token}"},
@@ -204,7 +192,6 @@ class DashboardUser(HttpUser):
                 resp.success()
             else:
                 resp.failure(f"Status {resp.status_code}")
-
 
 # Scenario 4: Promotion
 # Target: propagation completes < 60 seconds for full graph traversal
