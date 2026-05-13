@@ -82,36 +82,48 @@ pipeline {
             }
         }
 
+        stage('Create Databases') {
+            when { branch 'develop' }
+            steps {
+                sh """
+                    echo "Creating databases in PostgreSQL..."
+                    
+                    # Esperar a que PostgreSQL esté listo
+                    kubectl wait --for=condition=ready pod -l app=postgres -n ${NAMESPACE} --timeout=120s
+                    
+                    # Crear bases de datos necesarias
+                    kubectl exec -n ${NAMESPACE} deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_auth;" || true
+                    kubectl exec -n ${NAMESPACE} deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_promotion;" || true
+                    kubectl exec -n ${NAMESPACE} deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_dashboard;" || true
+                    kubectl exec -n ${NAMESPACE} deployment/postgres -- psql -U admin -d postgres -c "CREATE DATABASE circleguard_form;" || true
+                    
+                    echo "Databases created successfully"
+                """
+            }
+        }
+
         stage('Deploy Auth + Promotion') {
             when { branch 'develop' }
             parallel {
                 stage('Auth') {
                     steps {
                         sh """
-                            echo "Deploying Auth service to namespace ${NAMESPACE}..."
-                            
-                            mkdir -p /tmp/services-${NAMESPACE}
-                            grep -v "namespace: dev" k8s/dev/services/auth.yaml > /tmp/services-${NAMESPACE}/auth.yaml
-                            
-                            kubectl apply -f /tmp/services-${NAMESPACE}/auth.yaml -n ${NAMESPACE}
-                            
-                            echo "=== DIAGNÓSTICO ==="
-                            echo "Pods en el namespace:"
-                            kubectl get pods -n ${NAMESPACE}
-                            
-                            echo "Eventos recientes:"
-                            kubectl get events -n ${NAMESPACE} --sort-by='.lastTimestamp' | tail -20
-                            
-                            echo "Logs del pod (si existe):"
-                            kubectl logs -n ${NAMESPACE} deployment/auth-service --tail=50 || echo "No logs aún"
-                            
-                            echo "Descripción del deployment:"
-                            kubectl describe deployment auth-service -n ${NAMESPACE} || echo "Deployment no encontrado"
-                            
-                            echo "=== ESPERANDO ROLLOUT ==="
-                            kubectl rollout status deployment/auth-service -n ${NAMESPACE} --timeout=300s
-                            
-                            rm -rf /tmp/services-${NAMESPACE}
+                        echo "Deploying Auth service to namespace ${NAMESPACE}..."
+                        
+                        # Función para aplicar YAML sin namespace fijo
+                        apply_to_namespace() {
+                            local file=\$1
+                            local ns=\$2
+                            grep -v "namespace:" "\$file" | kubectl apply -f - -n "\$ns"
+                        }
+                        
+                        apply_to_namespace k8s/dev/services/auth.yaml ${NAMESPACE}
+                        
+                        # Deshabilitar LDAP
+                        kubectl set env deployment/auth-service -n ${NAMESPACE} SPRING_LDAP_ENABLED=false
+                        kubectl set env deployment/auth-service -n ${NAMESPACE} MANAGEMENT_HEALTH_LDAP_ENABLED=false
+                        
+                        kubectl rollout status deployment/auth-service -n ${NAMESPACE} --timeout=300s
                         """
                     }
                 }
