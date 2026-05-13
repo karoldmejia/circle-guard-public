@@ -18,6 +18,7 @@ spec:
       containers:
         - name: dashboard-service
           image: circleguard/dashboard-service:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 8084
           env:
@@ -39,7 +40,7 @@ spec:
             httpGet:
               path: /actuator/health
               port: 8084
-            initialDelaySeconds: 30
+            initialDelaySeconds: 40
             periodSeconds: 10
           resources:
             requests:

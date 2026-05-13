@@ -121,13 +121,12 @@ pipeline {
                     
                     for service in gateway dashboard notification; do
                         echo "Deploying \$service..."
-                        grep -v "namespace: dev" k8s/dev/services/\$service.yaml | kubectl apply -f - -n ${NAMESPACE} || true
+                        grep -v "namespace: dev" k8s/dev/services/\$service.yaml | kubectl apply -f - -n ${NAMESPACE}
                     done
                     
-                    # Esperar a que todos estén listos (sin paralelizar para ahorrar CPU)
-                    kubectl rollout status deployment/gateway-service -n ${NAMESPACE} --timeout=300s || true
-                    kubectl rollout status deployment/dashboard-service -n ${NAMESPACE} --timeout=300s || true
-                    kubectl rollout status deployment/notification-service -n ${NAMESPACE} --timeout=300s || true
+                    kubectl rollout status deployment/gateway-service -n ${NAMESPACE} --timeout=300s
+                    kubectl rollout status deployment/dashboard-service -n ${NAMESPACE} --timeout=300s
+                    kubectl rollout status deployment/notification-service -n ${NAMESPACE} --timeout=300s
                 """
             }
         }

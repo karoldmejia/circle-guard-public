@@ -18,6 +18,7 @@ spec:
       containers:
         - name: notification-service
           image: circleguard/notification-service:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 8082
           env:
