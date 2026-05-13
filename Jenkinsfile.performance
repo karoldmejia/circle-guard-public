@@ -75,7 +75,7 @@ pipeline {
                     
                     # Verificar que responde
                     if ! curl -s http://localhost:\${PORT}/actuator/health > /dev/null 2>&1; then
-                        echo "❌ No se pudo conectar al servicio en puerto \${PORT}"
+                        echo "No se pudo conectar al servicio en puerto \${PORT}"
                         exit 1
                     fi
                     
