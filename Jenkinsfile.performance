@@ -15,7 +15,7 @@ pipeline {
 
     stages {
 
-        stage('Install Locust') {
+        stage('Install locust') {
             steps {
                 sh """
                     apk add --no-cache python3 py3-pip
