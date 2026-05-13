@@ -94,6 +94,21 @@ pipeline {
                             grep -v "namespace: dev" k8s/dev/services/auth.yaml > /tmp/services-${NAMESPACE}/auth.yaml
                             
                             kubectl apply -f /tmp/services-${NAMESPACE}/auth.yaml -n ${NAMESPACE}
+                            
+                            echo "=== DIAGNÓSTICO ==="
+                            echo "Pods en el namespace:"
+                            kubectl get pods -n ${NAMESPACE}
+                            
+                            echo "Eventos recientes:"
+                            kubectl get events -n ${NAMESPACE} --sort-by='.lastTimestamp' | tail -20
+                            
+                            echo "Logs del pod (si existe):"
+                            kubectl logs -n ${NAMESPACE} deployment/auth-service --tail=50 || echo "No logs aún"
+                            
+                            echo "Descripción del deployment:"
+                            kubectl describe deployment auth-service -n ${NAMESPACE} || echo "Deployment no encontrado"
+                            
+                            echo "=== ESPERANDO ROLLOUT ==="
                             kubectl rollout status deployment/auth-service -n ${NAMESPACE} --timeout=300s
                             
                             rm -rf /tmp/services-${NAMESPACE}
@@ -183,7 +198,6 @@ pipeline {
 
     post {
         always {
-            sh "kubectl delete ns ${NAMESPACE} || true"
             cleanWs()
         }
     }
