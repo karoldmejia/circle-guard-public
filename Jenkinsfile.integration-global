@@ -18,7 +18,15 @@ pipeline {
         stage('Create Namespace') {
             when { branch 'develop' }
             steps {
-                sh "kubectl create ns ${NAMESPACE} || true"
+                sh """
+                kubectl create ns ${NAMESPACE} || true
+                apply_to_namespace() {
+                            local file=\$1
+                            local ns=\$2
+                            grep -v "namespace:" "\$file" | kubectl apply -f - -n "\$ns"
+                        }
+                """
+                
             }
         }
 
@@ -133,13 +141,10 @@ pipeline {
                         sh """
                             echo "Deploying Promotion service to namespace ${NAMESPACE}..."
                             
-                            mkdir -p /tmp/services-${NAMESPACE}
-                            grep -v "namespace: dev" k8s/dev/services/promotion.yaml > /tmp/services-${NAMESPACE}/promotion.yaml
+                            apply_to_namespace k8s/dev/services/promotion.yaml ${NAMESPACE}
                             
-                            kubectl apply -f /tmp/services-${NAMESPACE}/promotion.yaml -n ${NAMESPACE}
+                            # Esperar a que promotion esté listo
                             kubectl rollout status deployment/promotion-service -n ${NAMESPACE} --timeout=300s
-                            
-                            rm -rf /tmp/services-${NAMESPACE}
                         """
                     }
                 }
