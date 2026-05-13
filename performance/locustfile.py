@@ -198,45 +198,30 @@ class DashboardUser(HttpUser):
 class PropagationUser(HttpUser):
     """
     Simulates health center reporting positive cases.
-    Low volume but CPU-intensive (Neo4j graph traversal).
+    Uses pre-generated JWT token to avoid auth calls.
     """
     wait_time = between(30, 60)
     host = "http://localhost:8088"
     weight = 1
 
     def on_start(self):
-        response = self.client.post(
-            "http://localhost:8180/api/v1/auth/login",
-            json={"username": "admin1", "password": "admin123"},
-            catch_response=False
-        )
-        if response.status_code == 200:
-            self.hc_token = response.json().get("token")
-            print(f"Token obtenido para PropagationUser")
-        else:
-            self.hc_token = None
-            print(f"No se pudo obtener token: {response.status_code}")
-        
-        # Usar un anonymousId real (debe existir en Identity)
+        self.hc_token = get_access_token("healthcenter-user")
         self.target_user = "e2e.confirmed.student@university.edu"
 
     @task(1)
     def report_positive(self):
-        if not self.hc_token:
-            return
-        identity_response = self.client.post(
+        with self.client.post(
             "http://localhost:8083/api/v1/identities/map",
             json={"realIdentity": self.target_user},
             headers={"Authorization": f"Bearer {self.hc_token}"},
+            name="/identities/map",
             catch_response=True
-        )
-        
-        if identity_response.status_code != 200:
-            return
-        
-        anonymous_id = identity_response.json().get("anonymousId")
-        if not anonymous_id:
-            return
+        ) as id_resp:
+            if id_resp.status_code != 200:
+                return
+            anonymous_id = id_resp.json().get("anonymousId")
+            if not anonymous_id:
+                return
         
         start = time.time()
         with self.client.post(
@@ -257,8 +242,6 @@ class PropagationUser(HttpUser):
 
     @task(3)
     def check_health_stats(self):
-        if not self.hc_token:
-            return
         with self.client.get(
             f"{PROMO_BASE}/health-status/stats",
             headers={"Authorization": f"Bearer {self.hc_token}"},
@@ -269,8 +252,9 @@ class PropagationUser(HttpUser):
                 resp.success()
             else:
                 resp.failure(f"Status {resp.status_code}")
-                
-# Scenario 5: Mixed Peak Load (8 AM scenario)
+
+
+# Scenario 5: Mixed Peak Load (CORREGIDO)
 # 20% login, 50% QR validation, 30% dashboard
 class MixedLoadUser(HttpUser):
     """
@@ -280,16 +264,17 @@ class MixedLoadUser(HttpUser):
     - Admins checking dashboard (30%)
     """
     wait_time = between(0.5, 2)
-    host = "http://localhost:8087"  # Default host
-    
+    host = "http://localhost:8087"
+    weight = 5
+
     def on_start(self):
         self.user_id = str(uuid.uuid4())
         self.qr_token = get_qr_token(self.user_id)
-        self.access_token = get_access_token(self.user_id)
+        self.admin_token = get_access_token("admin-user")
+        self.student_token = get_access_token("student-user")
 
     @task(5)
     def validate_qr(self):
-        # Usa el host por defecto (gateway)
         with self.client.post(
             f"{GATEWAY_BASE}/validate",
             json={"token": self.qr_token},
@@ -303,9 +288,8 @@ class MixedLoadUser(HttpUser):
 
     @task(2)
     def login(self):
-        # Para login, necesitas usar un cliente separado o cambiar el host
         with self.client.post(
-            f"{AUTH_BASE}/login",
+            "http://localhost:8180/api/v1/auth/login",
             json={"username": "student1", "password": "password123"},
             name="[mixed] /auth/login",
             catch_response=True
@@ -318,15 +302,12 @@ class MixedLoadUser(HttpUser):
     @task(3)
     def dashboard(self):
         with self.client.get(
-            f"{DASHBOARD_BASE}/health-board",
-            headers={"Authorization": f"Bearer {self.access_token}"},
+            "http://localhost:8084/api/v1/analytics/health-board",
+            headers={"Authorization": f"Bearer {self.admin_token}"},
             name="[mixed] /analytics/health-board",
             catch_response=True
         ) as resp:
             if resp.status_code == 200:
-                resp.success()
-            elif resp.status_code == 401:
-                self.access_token = get_access_token(str(uuid.uuid4()))
                 resp.success()
             else:
                 resp.failure(f"Status {resp.status_code}")
