@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     triggers {
-        pollSCM('H/5 * * * *')
+        pollSCM('* * * * *')
     }
 
     environment {
@@ -142,7 +142,7 @@ pipeline {
                             echo "Deploying Promotion service to namespace ${NAMESPACE}..."
                             
                             apply_to_namespace k8s/dev/services/promotion.yaml ${NAMESPACE}
-                            
+
                             # Esperar a que promotion esté listo
                             kubectl rollout status deployment/promotion-service -n ${NAMESPACE} --timeout=300s
                         """
