@@ -1,5 +1,10 @@
 pipeline {
-    agent any
+    agent {
+        docker {
+            image 'locustio/locust'
+            args '-v /var/run/docker.sock:/var/run/docker.sock'
+        }
+    }
 
     parameters {
         choice(name: 'TEST_TYPE', choices: ['gateway', 'login', 'dashboard', 'propagation', 'mixed'])
@@ -10,28 +15,21 @@ pipeline {
 
     stages {
 
-        stage('Check Stage') {
+        stage('Check stage') {
             steps {
                 sh "kubectl get pods -n stage"
             }
         }
 
-        stage('Install Locust') {
-            steps {
-                sh "pip3 install --user locust"
-            }
-        }
-
-        stage('Run Tests') {
+        stage('Run tests') {
             steps {
                 sh """
                     cd performance
-
                     locust -f locustfile.py \
-                        --host=http://gateway-service.stage.svc.cluster.local:8087 \
-                        --users=${params.USERS} \
-                        --spawn-rate=${params.SPAWN_RATE} \
-                        --run-time=${params.RUN_TIME}s \
+                        --host=http://localhost:8087 \
+                        --users=${USERS} \
+                        --spawn-rate=${SPAWN_RATE} \
+                        --run-time=${RUN_TIME}s \
                         --headless \
                         --only-summary
                 """
