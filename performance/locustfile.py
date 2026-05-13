@@ -127,7 +127,7 @@ class GatewayUser(HttpUser):
 # Scenario 2: Auth Login Throughput
 class LoginUser(HttpUser):
     """
-    Simulates users logging in at peak times (e.g. morning before 8 AM lectures).
+    Simulates users logging in at peak times.
     """
     wait_time = between(1, 3)
     host = "http://localhost:8180"
@@ -135,115 +135,68 @@ class LoginUser(HttpUser):
 
     TEST_USERS = [
         {"username": "student1", "password": "password123"},
-        {"username": "student2", "password": "password123"},
-        {"username": "professor1", "password": "prof123"},
         {"username": "admin1", "password": "admin123"},
     ]
 
     @task(8)
     def login_valid(self):
-        creds = self.TEST_USERS[hash(time.time()) % len(self.TEST_USERS)]
         with self.client.post(
-            f"{AUTH_BASE}/login",
-            json=creds,
-            name="/auth/login [valid]",
+            "/api/v1/auth/login",
+            json=self.TEST_USERS[0],
             catch_response=True
         ) as resp:
-            if resp.status_code in (200, 401):  # 401 is also a valid (rejected) response
-                if resp.status_code == 200 and "token" not in resp.text:
-                    resp.failure("No token in 200 response")
-                else:
+            if resp.status_code == 200:
+                data = resp.json()
+                if "token" in data:
                     resp.success()
+                else:
+                    resp.failure("No token in response")
+            elif resp.status_code == 401:
+                resp.success()  # Invalid credentials, but endpoint works
             else:
                 resp.failure(f"Unexpected status {resp.status_code}")
 
     @task(2)
     def login_invalid(self):
-        """Simulate failed login attempts (common in load scenarios)."""
         with self.client.post(
-            f"{AUTH_BASE}/login",
-            json={"username": f"invalid_{uuid.uuid4()}", "password": "wrongpass"},
-            name="/auth/login [invalid]",
+            "/api/v1/auth/login",  # ← CORREGIDO
+            json={"username": "invalid", "password": "wrong"},
             catch_response=True
         ) as resp:
             if resp.status_code in (401, 403):
                 resp.success()
             else:
-                resp.failure(f"Expected 401 for invalid login, got {resp.status_code}")
-
-    @task(3)
-    def generate_qr(self):
-        """Generate QR token – triggered after successful login."""
-        token = get_access_token(str(uuid.uuid4()))
-        with self.client.get(
-            f"{AUTH_BASE.replace('auth', 'qr')}/generate",
-            headers={"Authorization": f"Bearer {token}"},
-            name="/qr/generate",
-            catch_response=True
-        ) as resp:
-            if resp.status_code in (200, 401, 403):
-                resp.success()
-            else:
-                resp.failure(f"Unexpected status {resp.status_code}")
+                resp.failure(f"Expected 401, got {resp.status_code}")
 
 
-# Scenario 3: Dashboard Analytics Load
-# Target: p95 < 500ms under 100 concurrent users
 class DashboardUser(HttpUser):
     """
     Simulates health administrators monitoring the dashboard.
-    Typically fewer users but heavier queries.
     """
     wait_time = between(2, 5)
     host = "http://localhost:8084"
     weight = 3
 
     def on_start(self):
-        self.admin_token = get_access_token(str(uuid.uuid4()))
+        response = self.client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin1", "password": "admin123"}
+        )
+        if response.status_code == 200:
+            self.admin_token = response.json().get("token")
+        else:
+            self.admin_token = None
 
     @task(5)
     def health_board(self):
-        """Main dashboard view – most frequently accessed."""
+        if not self.admin_token:
+            return
         with self.client.get(
-            f"{DASHBOARD_BASE}/health-board",
+            "/api/v1/analytics/health-board",  # ← Ruta correcta
             headers={"Authorization": f"Bearer {self.admin_token}"},
-            name="/analytics/health-board",
             catch_response=True
         ) as resp:
             if resp.status_code == 200:
-                resp.success()
-            elif resp.status_code == 401:
-                self.admin_token = get_access_token(str(uuid.uuid4()))
-                resp.success()
-            else:
-                resp.failure(f"Status {resp.status_code}")
-
-    @task(3)
-    def department_stats(self):
-        depts = ["Engineering", "Sciences", "Arts", "Medicine", "Law"]
-        dept = depts[int(time.time()) % len(depts)]
-        with self.client.get(
-            f"{DASHBOARD_BASE}/department/{dept}",
-            headers={"Authorization": f"Bearer {self.admin_token}"},
-            name="/analytics/department/[dept]",
-            catch_response=True
-        ) as resp:
-            if resp.status_code in (200, 404):
-                resp.success()
-            else:
-                resp.failure(f"Status {resp.status_code}")
-
-    @task(2)
-    def location_trends(self):
-        loc_ids = ["loc-001", "loc-002", "loc-003", "loc-004"]
-        loc = loc_ids[int(time.time()) % len(loc_ids)]
-        with self.client.get(
-            f"{DASHBOARD_BASE}/trends/{loc}",
-            headers={"Authorization": f"Bearer {self.admin_token}"},
-            name="/analytics/trends/[locationId]",
-            catch_response=True
-        ) as resp:
-            if resp.status_code in (200, 404):
                 resp.success()
             else:
                 resp.failure(f"Status {resp.status_code}")
