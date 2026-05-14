@@ -46,7 +46,7 @@ def build_jwt(subject: str, secret: str, permissions: list = None, expiry_second
         "exp": now + expiry_seconds,
     }
     if permissions:
-        payload_data["authorities"] = permissions
+        payload_data["permissions"] = permissions
     
     payload = _b64url_encode(json.dumps(payload_data).encode())
     signing_input = f"{header}.{payload}".encode()
@@ -199,7 +199,7 @@ class PropagationUser(HttpUser):
         self.hc_token = build_jwt(
             "propagation-test-user",
             JWT_SECRET,
-            permissions=["HEALTH_CENTER"],
+            permissions=["ROLE_HEALTH_CENTER"],
             expiry_seconds=3600
         )
         
