@@ -199,7 +199,7 @@ class PropagationUser(HttpUser):
         self.hc_token = build_jwt(
             "propagation-test-user",
             JWT_SECRET,
-            permissions=["ROLE_HEALTH_CENTER"],
+            permissions=["HEALTH_CENTER"],
             expiry_seconds=3600
         )
         
