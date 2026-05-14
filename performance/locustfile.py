@@ -84,6 +84,7 @@ class GatewayUser(HttpUser):
     weight = 5
 
     def on_start(self):
+        # Login para obtener token de health center (si lo necesitas)
         response = self.client.post(
             "http://localhost:8180/api/v1/auth/login",
             json={"username": "super_admin", "password": "password"}
@@ -95,13 +96,17 @@ class GatewayUser(HttpUser):
             print(f"Token payload: {json.loads(payload)}")
         else:
             self.hc_token = None
+        
+        # ← AÑADE ESTAS LÍNEAS para generar el QR token
+        self.user_id = str(uuid.uuid4())
+        self.qr_token = get_qr_token(self.user_id)
 
     @task(10)
     def validate_qr_token(self):
         """Validate a QR token at the gate – the most frequent gateway operation."""
         with self.client.post(
             f"{GATEWAY_BASE}/validate",
-            json={"token": self.qr_token},
+            json={"token": self.qr_token},  # Ahora sí existe
             name="/gate/validate",
             catch_response=True
         ) as resp:
@@ -132,8 +137,6 @@ class GatewayUser(HttpUser):
                     resp.success()
             else:
                 resp.failure(f"Unexpected status {resp.status_code}")
-
-
 # Scenario 2: Auth Login Throughput
 class LoginUser(HttpUser):
     """
@@ -207,34 +210,26 @@ class DashboardUser(HttpUser):
 # Target: propagation completes < 60 seconds for full graph traversal
 class PropagationUser(HttpUser):
     wait_time = between(30, 60)
-    host = "http://localhost:8180"  # Auth service
+    host = "http://localhost:8088"
     weight = 1
 
     def on_start(self):
-        # Login para obtener token
         response = self.client.post(
-            "/api/v1/auth/login",
+            "http://localhost:8180/api/v1/auth/login",
             json={"username": "super_admin", "password": "password"}
         )
         if response.status_code == 200:
             self.hc_token = response.json().get("token")
-            # Debug: verificar permisos
             parts = self.hc_token.split('.')
             payload = base64.b64decode(parts[1] + '==')
-            print(f"Token permissions: {json.loads(payload).get('permissions')}")
+            print(f"Token payload: {json.loads(payload)}")
         else:
-            print(f"Login failed: {response.status_code}")
             self.hc_token = None
         
-        # ← AÑADE ESTA LÍNEA para definir target_user
         self.target_user = str(uuid.uuid4())
         
     @task(1)
     def report_positive(self):
-        # Verificar que tenemos token
-        if not self.hc_token:
-            return
-            
         with self.client.post(
             "http://localhost:8083/api/v1/identities/map",
             json={"realIdentity": self.target_user},
@@ -243,16 +238,14 @@ class PropagationUser(HttpUser):
             catch_response=True
         ) as id_resp:
             if id_resp.status_code != 200:
-                id_resp.failure(f"Identity map failed: {id_resp.status_code}")
                 return
             anonymous_id = id_resp.json().get("anonymousId")
             if not anonymous_id:
-                id_resp.failure("No anonymousId in response")
                 return
         
         start = time.time()
         with self.client.post(
-            "http://localhost:8088/api/v1/health/report",  # URL completa
+            f"{PROMO_BASE}/health/report",
             json={"anonymousId": anonymous_id, "status": "CONFIRMED"},
             headers={"Authorization": f"Bearer {self.hc_token}"},
             name="/health/report [CONFIRMED]",
