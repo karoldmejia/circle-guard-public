@@ -207,21 +207,18 @@ class DashboardUser(HttpUser):
 # Target: propagation completes < 60 seconds for full graph traversal
 class PropagationUser(HttpUser):
     wait_time = between(30, 60)
-    host = "http://localhost:8088"
+    host = "http://localhost:8180"  # ← Cambiado a auth-service
     weight = 1
 
     def on_start(self):
         response = self.client.post(
-            "http://localhost:8180/api/v1/auth/login",
+            "/api/v1/auth/login"
             json={"username": "super_admin", "password": "password"}
         )
         if response.status_code == 200:
             self.hc_token = response.json().get("token")
-            print(f"Token obtenido para super_admin")
         else:
             self.hc_token = None
-            print(f"Error: {response.status_code}")
-        self.target_user = "e2e.confirmed.student@university.edu"
         
     @task(1)
     def report_positive(self):
