@@ -212,7 +212,7 @@ class PropagationUser(HttpUser):
 
     def on_start(self):
         response = self.client.post(
-            "/api/v1/auth/login"
+            "/api/v1/auth/login",
             json={"username": "super_admin", "password": "password"}
         )
         if response.status_code == 200:
